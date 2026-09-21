@@ -16,6 +16,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -39,6 +40,19 @@ def default_csv(*names):
             if (base / name).exists():
                 return base / name
     return ROOT / names[0]
+
+
+def data_updated(path, fallback):
+    """CSV が最後に更新された日時(JST)。CSV を置いている git リポジトリでの最終コミット日時を使う
+    (GitHub Actions では checkout 時刻がファイルの更新時刻になってしまうため)。取れなければ fallback。"""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path.parent), "log", "-1", "--format=%cI", "--", path.name],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+        return dt.datetime.fromisoformat(out).astimezone(JST)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return fallback
 
 
 def read_csv(path, cols):
@@ -138,6 +152,7 @@ def main():
     data = {
         "meta": {
             "generated": now.strftime("%Y-%m-%d %H:%M") + " JST",
+            "updated": data_updated(args.daily, now).strftime("%Y-%m-%d %H:%M") + " JST",  # データの最終更新(右上に表示)
             "first": dates[0],
             "last": dates[-1],
             "excluded": excluded,
