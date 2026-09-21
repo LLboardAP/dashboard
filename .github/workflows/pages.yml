@@ -1,0 +1,50 @@
+name: Build and deploy dashboard
+
+on:
+  # CSV や画面のソースが更新されたら再ビルド
+  push:
+    branches: [main]
+    paths:
+      - daily_stats.csv
+      - trip_daily_stats.csv
+      - build.py
+      - template.html
+      - .github/workflows/pages.yml
+  # 6時間ごとに再ビルド(CSV が別のワークフロー等から更新された場合の取りこぼし対策)
+  schedule:
+    - cron: "20 */6 * * *"
+  # 手動実行(Actions タブの "Run workflow")
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # CSV が壊れている場合はここで失敗し、公開中のページは前の版のまま残る
+      - run: python build.py --out _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

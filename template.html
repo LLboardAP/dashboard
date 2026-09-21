@@ -1,0 +1,886 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>投稿アクティビティ</title>
+<meta name="description" content="掲示板の投稿数、アクティブなトリップ数、新規スレッド数などの推移と、トリップ別ランキングを見られるダッシュボード。データは定期的に更新されます。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="投稿アクティビティ">
+<meta property="og:description" content="掲示板の投稿数、アクティブなトリップ数、新規スレッド数などの推移と、トリップ別ランキング。">
+<meta name="robots" content="index,follow">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,.10);
+  --s1: #2a78d6;   /* 投稿 */
+  --s2: #eb6834;   /* トリップ */
+  --s3: #1baf7a;   /* スレッド */
+  --up: #006300;
+  --down: #d03b3b;
+  --seq-0: #eeeeeb;
+  --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #6da7ec; --seq-4: #3987e5;
+  --seq-5: #256abf; --seq-6: #184f95; --seq-7: #0d366b;
+  --hover: rgba(11,11,11,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --up: #0ca30c; --down: #d03b3b;
+    --seq-0: #262625;
+    --seq-1: #0d366b; --seq-2: #104281; --seq-3: #184f95; --seq-4: #1c5cab;
+    --seq-5: #2a78d6; --seq-6: #3987e5; --seq-7: #6da7ec;
+    --hover: rgba(255,255,255,.08);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --up: #0ca30c; --down: #d03b3b;
+  --seq-0: #262625;
+  --seq-1: #0d366b; --seq-2: #104281; --seq-3: #184f95; --seq-4: #1c5cab;
+  --seq-5: #2a78d6; --seq-6: #3987e5; --seq-7: #6da7ec;
+  --hover: rgba(255,255,255,.08);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+}
+.wrap { max-width: 1240px; margin: 0 auto; padding: 20px 16px 48px; }
+
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; }
+.sub { color: var(--ink2); font-size: 13px; margin-top: 2px; }
+button { font: inherit; color: inherit; }
+.iconbtn {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer; color: var(--ink2); white-space: nowrap;
+}
+.iconbtn:hover { background: var(--hover); }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.seg button { border: 0; background: none; padding: 6px 12px; cursor: pointer; color: var(--ink2); border-right: 1px solid var(--border); }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--hover); }
+.seg button[aria-pressed="true"] { color: var(--ink); font-weight: 650; background: var(--hover); }
+.seg button[aria-pressed="true"]::before { content: "✓ "; }
+.range { display: inline-flex; align-items: center; gap: 6px; color: var(--ink2); }
+input[type="date"] {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 8px;
+}
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+/* cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0; font-weight: 650; }
+.card .cap { color: var(--ink2); font-size: 12px; margin: 2px 0 8px; }
+.grid { display: grid; gap: 16px; margin-bottom: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.chart-host { width: 100%; min-height: 20px; }
+svg.chart { display: block; overflow: visible; }
+svg.chart:focus-visible { outline-offset: 4px; border-radius: 4px; }
+
+/* KPI */
+.kpis { display: grid; gap: 12px; margin-bottom: 16px; grid-template-columns: 2fr repeat(3, 1fr); }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tile.hero { grid-row: span 2; justify-content: center; }
+.tile:last-child { grid-column: span 2; }
+.t-label { color: var(--ink2); font-size: 13px; }
+.t-value { font-size: 26px; font-weight: 650; line-height: 1.2; letter-spacing: -.01em; }
+.hero .t-value { font-size: 56px; line-height: 1.1; }
+.t-delta { font-size: 12px; color: var(--muted); min-height: 18px; }
+.t-delta b { font-weight: 650; }
+.t-delta .up { color: var(--up); }
+.t-delta .down { color: var(--down); }
+.t-spark { margin-top: 4px; height: 28px; }
+
+/* svg text */
+.tick { fill: var(--muted); font-size: 11px; }
+.endl { fill: var(--ink); font-size: 12px; font-weight: 650; }
+.vlab { fill: var(--ink); font-size: 12px; font-weight: 600; }
+.hlab { fill: var(--ink2); font-size: 12px; }
+.gridl { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; }
+.axisl { stroke: var(--axis); stroke-width: 1; shape-rendering: crispEdges; }
+.cross { stroke: var(--muted); stroke-width: 1; shape-rendering: crispEdges; }
+.hband { fill: var(--hover); }
+
+/* legend */
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 6px; color: var(--ink2); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.k-line { display: inline-block; width: 16px; height: 0; border-top: 2px solid; border-radius: 2px; }
+.k-box { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+
+/* tooltip */
+#tip {
+  position: fixed; left: 0; top: 0; z-index: 10; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.14); padding: 8px 10px; font-size: 12px; min-width: 150px;
+}
+.tip-h { color: var(--ink2); margin-bottom: 4px; }
+.tip-r { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+.tip-r .k-line { width: 12px; }
+.tip-r .nm { color: var(--ink2); flex: 1; }
+.tip-r .v { font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tip-n { color: var(--muted); margin-top: 4px; }
+
+/* heatmap */
+.heat-scroll { overflow-x: auto; padding-bottom: 4px; }
+.heat-legend { display: flex; align-items: center; gap: 4px; color: var(--ink2); font-size: 12px; margin-top: 8px; }
+.heat-legend i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+
+/* table */
+details.card { margin-top: 0; }
+details summary { cursor: pointer; font-weight: 650; font-size: 15px; }
+.tablewrap { max-height: 420px; overflow: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; }
+
+/* ranking */
+.rank-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+input[type="search"] {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 10px; min-width: 200px;
+}
+#rank-table tbody tr { cursor: pointer; }
+#rank-table tbody tr:hover, #rank-table tbody tr.sel { background: var(--hover); }
+#rank-table td.l, #rank-table th.l { text-align: left; }
+#rank-table td.trip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+#rank-table th button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+#rank-table th button:hover { color: var(--ink); }
+#rank-table th[aria-sort] { color: var(--ink); }
+.detail { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.detail-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 6px; }
+.detail-h b { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
+.detail-h .sub { margin: 0; }
+.detail-h .iconbtn { margin-left: auto; padding: 2px 10px; }
+.rank-more { margin-top: 10px; }
+
+.notes { color: var(--ink2); font-size: 12px; margin-top: 20px; }
+.notes li { margin: 2px 0; }
+
+@media (max-width: 900px) {
+  .g2 { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile.hero { grid-column: span 2; grid-row: auto; }
+  .tile:last-child { grid-column: auto; }
+  .hero .t-value { font-size: 48px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>投稿アクティビティ</h1>
+      <div class="sub" id="period"></div>
+    </div>
+    <button class="iconbtn" id="theme" type="button" aria-label="表示テーマを切り替え">◐ テーマ</button>
+  </header>
+
+  <div class="filters" role="group" aria-label="期間">
+    <div class="seg" id="presets"></div>
+    <div class="range">
+      <input type="date" id="from" aria-label="開始日"> – <input type="date" id="to" aria-label="終了日">
+    </div>
+    <div class="sub" id="rangeinfo"></div>
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="主要指標"></section>
+
+  <section class="card" style="margin-bottom:16px">
+    <h2>投稿数の推移</h2>
+    <div class="cap">1日あたりの投稿数と7日移動平均</div>
+    <div class="legend" id="lg-posts"></div>
+    <div class="chart-host" id="ch-posts"></div>
+  </section>
+
+  <div class="grid g2">
+    <section class="card">
+      <h2>アクティブなトリップ数</h2>
+      <div class="cap">直近7日 = その日を含む7日間に1回以上投稿したトリップの数</div>
+      <div class="legend" id="lg-active"></div>
+      <div class="chart-host" id="ch-active"></div>
+    </section>
+    <section class="card">
+      <h2>新規スレッド数</h2>
+      <div class="cap">1日あたり</div>
+      <div class="chart-host" id="ch-threads"></div>
+    </section>
+  </div>
+
+  <div class="grid g2">
+    <section class="card">
+      <h2>トリップ付き投稿の比率</h2>
+      <div class="cap">投稿全体に占める割合</div>
+      <div class="legend" id="lg-rate"></div>
+      <div class="chart-host" id="ch-rate"></div>
+    </section>
+    <section class="card">
+      <h2>曜日別の平均投稿数</h2>
+      <div class="cap">選択期間内の曜日ごとの1日平均</div>
+      <div class="chart-host" id="ch-dow"></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-bottom:16px">
+    <h2>曜日 × 週の投稿数</h2>
+    <div class="cap">1マスが1日。色が濃いほど投稿が多い日</div>
+    <div class="heat-scroll" id="heat-scroll"><div id="ch-heat"></div></div>
+    <div class="heat-legend" id="heat-legend"></div>
+  </section>
+
+  <details class="card" id="tbl" style="margin-bottom:16px">
+    <summary>日別データをテーブルで表示</summary>
+    <div class="tablewrap"><table><thead></thead><tbody></tbody></table></div>
+  </details>
+
+  <details class="card" id="rank-card" open hidden>
+    <summary>トリップ別ランキング</summary>
+    <div class="cap" style="margin-top:6px">ここで指定した期間の投稿数順です（上部の期間指定とは独立）。行を選ぶと、そのトリップの日別の推移を表示します</div>
+    <div class="filters" style="margin-bottom:10px" role="group" aria-label="ランキングの期間">
+      <div class="seg" id="rank-presets"></div>
+      <div class="range">
+        <input type="date" id="rank-from" aria-label="ランキング開始日"> – <input type="date" id="rank-to" aria-label="ランキング終了日">
+      </div>
+      <div class="sub" id="rank-range"></div>
+    </div>
+    <div class="rank-tools">
+      <input type="search" id="rank-q" placeholder="トリップで検索" aria-label="トリップで検索">
+      <span class="sub" id="rank-count"></span>
+    </div>
+    <div class="detail" id="rank-detail" hidden>
+      <div class="detail-h">
+        <b id="rd-name"></b><span class="sub" id="rd-meta"></span>
+        <button class="iconbtn" id="rd-close" type="button">閉じる</button>
+      </div>
+      <div class="chart-host" id="ch-trip"></div>
+    </div>
+    <div class="tablewrap" style="max-height:none;margin-top:0"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
+    <button class="iconbtn rank-more" id="rank-more" type="button"></button>
+  </details>
+
+  <ul class="notes" id="notes"></ul>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const D = /*__DATA__*/null;
+
+(() => {
+'use strict';
+const NS = 'http://www.w3.org/2000/svg';
+const $ = s => document.querySelector(s);
+const nf = new Intl.NumberFormat('ja-JP');
+const fmt0 = v => nf.format(Math.round(v));
+const fmt1 = v => nf.format(Math.round(v * 10) / 10);
+const WD = ['月', '火', '水', '木', '金', '土', '日'];
+
+function svgEl(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, cls, text, parent) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const dowOf = s => (new Date(s + 'T00:00:00Z').getUTCDay() + 6) % 7;
+const fmtDate = s => { const [y, m, d] = s.split('-'); return `${y}/${+m}/${+d}`; };
+const fmtDateW = s => `${fmtDate(s)} (${WD[dowOf(s)]})`;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* ---------- 全期間の派生データ ---------- */
+const N = D.dates.length;
+const nTrips = D.meta.trips;
+const firstSeen = new Int32Array(nTrips).fill(-1);
+const lastSeen = new Int32Array(nTrips).fill(-1);
+for (let i = 0; i < N; i++) {
+  const p = D.tripDays[i];
+  for (let k = 0; k < p.length; k += 2) {
+    if (firstSeen[p[k]] < 0) firstSeen[p[k]] = i;
+    lastSeen[p[k]] = i;
+  }
+}
+
+// 直近7日のユニークトリップ数(窓が満たない最初の6日は null)
+const w7 = new Array(N).fill(null);
+{
+  const cnt = new Int32Array(nTrips);
+  let distinct = 0;
+  for (let i = 0; i < N; i++) {
+    const add = D.tripDays[i];
+    for (let k = 0; k < add.length; k += 2) if (cnt[add[k]]++ === 0) distinct++;
+    if (i >= 7) {
+      const rm = D.tripDays[i - 7];
+      for (let k = 0; k < rm.length; k += 2) if (--cnt[rm[k]] === 0) distinct--;
+    }
+    if (i >= 6) w7[i] = distinct;
+  }
+}
+function windowed(fnSum) {
+  const out = new Array(N).fill(null);
+  for (let i = 6; i < N; i++) out[i] = fnSum(i - 6, i);
+  return out;
+}
+const prefix = arr => { const p = [0]; for (const v of arr) p.push(p[p.length - 1] + v); return p; };
+const pPosts = prefix(D.posts), pTripped = prefix(D.tripped);
+const ma7Posts = windowed((a, b) => (pPosts[b + 1] - pPosts[a]) / 7);
+const rate = D.posts.map((p, i) => D.tripped[i] / p * 100);
+const rateMa7 = windowed((a, b) => (pTripped[b + 1] - pTripped[a]) / (pPosts[b + 1] - pPosts[a]) * 100);
+
+function tripStats(a, b) {
+  const days = new Int32Array(nTrips), posts = new Int32Array(nTrips);
+  let count = 0;
+  for (let i = a; i <= b; i++) {
+    const p = D.tripDays[i];
+    for (let k = 0; k < p.length; k += 2) {
+      if (days[p[k]]++ === 0) count++;
+      posts[p[k]] += p[k + 1];
+    }
+  }
+  return { count, days, posts };
+}
+
+/* ---------- 共通: 目盛り / ツールチップ ---------- */
+function niceScale(lo, hi, n = 4) {
+  if (!isFinite(lo)) lo = 0;
+  if (!isFinite(hi) || hi <= lo) hi = lo + 1;
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  const t0 = Math.floor(lo / step + 1e-9) * step, t1 = Math.ceil(hi / step - 1e-9) * step;
+  const ticks = [];
+  for (let v = t0; v <= t1 + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+  return { t0, t1, ticks };
+}
+
+const tip = $('#tip');
+function showTip(build, cx, cy) {
+  tip.textContent = '';
+  build(tip);
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let x = cx + 14, y = cy + 14;
+  if (x + r.width > innerWidth - 8) x = cx - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = innerHeight - r.height - 8;
+  tip.style.transform = `translate(${Math.max(8, x)}px,${Math.max(8, y)}px)`;
+}
+const hideTip = () => { tip.hidden = true; };
+
+function tipRow(parent, color, name, value, o = {}) {
+  const r = h('div', 'tip-r', null, parent);
+  const k = h('span', 'k-line', null, r);
+  k.style.borderColor = color;
+  if (o.op) k.style.opacity = o.op;
+  h('span', 'nm', name, r);
+  h('span', 'v', value, r);
+}
+
+function buildLegend(host, series) {
+  host.textContent = '';
+  for (const s of series) {
+    const it = h('span', null, null, host);
+    const k = h('i', s.type === 'line' ? 'k-line' : 'k-box', null, it);
+    if (s.type === 'line') k.style.borderColor = s.color; else k.style.background = s.color;
+    if (s.op) k.style.opacity = s.op;
+    it.appendChild(document.createTextNode(s.name));
+  }
+}
+
+/* ---------- 時系列チャート(line / area / bar) ---------- */
+function timeChart(host, o) {
+  host.textContent = '';
+  const W = Math.max(280, host.clientWidth), H = o.height || 230;
+  const m = { l: 50, r: 58, t: 12, b: 26 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, n = o.x.length;
+  const svg = svgEl('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': o.label, tabindex: 0 }, host);
+
+  let lo = o.yMin != null ? o.yMin : Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (o.stack) {
+      let s = 0;
+      for (const se of o.series) s += se.vals[i] || 0;
+      hi = Math.max(hi, s);
+    } else {
+      for (const se of o.series) {
+        const v = se.vals[i];
+        if (v == null) continue;
+        hi = Math.max(hi, v);
+        if (o.yMin == null) lo = Math.min(lo, v);
+      }
+    }
+  }
+  const sc = niceScale(lo, hi);
+  const y = v => m.t + ih - (v - sc.t0) / (sc.t1 - sc.t0) * ih;
+  const band = iw / n;
+  const x = i => m.l + band * (i + 0.5);
+  const yfmt = o.yFmt || fmt0;
+
+  for (const t of sc.ticks) {
+    const yy = y(t);
+    svgEl('line', { class: t === sc.t0 ? 'axisl' : 'gridl', x1: m.l, x2: W - m.r, y1: yy, y2: yy }, svg);
+    svgEl('text', { class: 'tick', x: m.l - 8, y: yy + 4, 'text-anchor': 'end' }, svg).textContent = yfmt(t);
+  }
+
+  // x ticks
+  let idx = [];
+  if (n <= 14) { for (let i = 0; i < n; i++) idx.push(i); }
+  else if (n <= 45) { for (let i = 0; i < n; i++) if (dowOf(o.x[i]) === 0 || i === 0) idx.push(i); }
+  else { for (let i = 0; i < n; i++) if (o.x[i].slice(8) === '01') idx.push(i); }
+  if (!idx.length) idx = [0];
+  let lastX = -1e9;
+  for (const i of idx) {
+    if (x(i) - lastX < 64) continue;
+    lastX = x(i);
+    const [yy, mm, dd] = o.x[i].split('-');
+    svgEl('text', { class: 'tick', x: x(i), y: H - 6, 'text-anchor': 'middle' }, svg).textContent = n <= 45 ? `${+mm}/${+dd}` : `${yy}/${+mm}`;
+  }
+
+  // marks
+  const bars = o.series.filter(s => s.type === 'bar');
+  if (bars.length) {
+    const gap = band >= 6 ? 2 : band >= 3 ? 1 : 0.4;
+    const bw = band < 1.5 ? Math.max(0.7, band * 0.85) : Math.min(24, band - gap);
+    for (let i = 0; i < n; i++) {
+      let acc = 0;
+      const live = bars.filter(s => s.vals[i]);
+      live.forEach((se, j) => {
+        const v = se.vals[i];
+        const top = y(acc + v);
+        let bot = y(acc) - (acc > 0 ? 2 : 0);
+        acc += v;
+        if (bot - top < 0.5) bot = top + 0.5;
+        const bx = x(i) - bw / 2, isTop = j === live.length - 1, r = Math.min(4, bw / 2, bot - top);
+        if (isTop && bw >= 6 && r > 1) {
+          svgEl('path', { d: `M${bx},${bot}V${top + r}Q${bx},${top} ${bx + r},${top}H${bx + bw - r}Q${bx + bw},${top} ${bx + bw},${top + r}V${bot}Z`, style: `fill:${se.color}` }, svg);
+        } else {
+          svgEl('rect', { x: bx, y: top, width: bw, height: bot - top, style: `fill:${se.color}` }, svg);
+        }
+      });
+    }
+  }
+  for (const se of o.series) {
+    if (se.type === 'bar') continue;
+    let d = '', pen = false, first = -1, last = -1;
+    for (let i = 0; i < n; i++) {
+      const v = se.vals[i];
+      if (v == null) { pen = false; continue; }
+      if (first < 0) first = i;
+      last = i;
+      d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1);
+      pen = true;
+    }
+    if (first < 0) continue;
+    if (se.type === 'area') {
+      svgEl('path', { d: d + `L${x(last).toFixed(1)},${y(sc.t0)}L${x(first).toFixed(1)},${y(sc.t0)}Z`, style: `fill:${se.color};fill-opacity:.1;stroke:none` }, svg);
+    }
+    svgEl('path', {
+      d, fill: 'none', 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      style: `stroke:${se.color};stroke-width:${se.w || 2};stroke-opacity:${se.op || 1}`
+    }, svg);
+  }
+
+  // hover layer
+  const hb = svgEl('rect', { class: 'hband', y: m.t, height: ih, width: Math.max(band, 2), display: 'none' }, svg);
+  const cross = svgEl('line', { class: 'cross', y1: m.t, y2: m.t + ih, display: 'none' }, svg);
+  const dotSeries = o.series.filter(s => s.type !== 'bar');
+  const dots = dotSeries.map(se => svgEl('circle', { r: 4, display: 'none', style: `fill:${se.color};stroke:var(--surface);stroke-width:2` }, svg));
+
+  // end labels
+  for (const se of o.series) {
+    if (!se.end) continue;
+    let j = n - 1;
+    while (j >= 0 && se.vals[j] == null) j--;
+    if (j < 0) continue;
+    svgEl('circle', { cx: x(j), cy: y(se.vals[j]), r: 4, style: `fill:${se.color};stroke:var(--surface);stroke-width:2` }, svg);
+    svgEl('text', { class: 'endl', x: x(j) + 9, y: y(se.vals[j]) + 4 }, svg).textContent = (se.fmt || yfmt)(se.vals[j]);
+  }
+
+  const hit = svgEl('rect', { x: m.l, y: m.t, width: iw, height: ih, fill: 'transparent' }, svg);
+  let cur = n - 1;
+  function at(i, cx, cy) {
+    cur = i;
+    const xx = x(i);
+    hb.setAttribute('x', xx - Math.max(band, 2) / 2); hb.removeAttribute('display');
+    cross.setAttribute('x1', xx); cross.setAttribute('x2', xx); cross.removeAttribute('display');
+    dotSeries.forEach((se, j) => {
+      const v = se.vals[i];
+      if (v == null) dots[j].setAttribute('display', 'none');
+      else { dots[j].setAttribute('cx', xx); dots[j].setAttribute('cy', y(v)); dots[j].removeAttribute('display'); }
+    });
+    showTip(t => {
+      h('div', 'tip-h', fmtDateW(o.x[i]), t);
+      let total = 0;
+      for (const se of o.series) {
+        const v = se.vals[i];
+        if (v == null) continue;
+        total += v;
+        tipRow(t, se.color, se.name, (se.tipFmt || se.fmt || yfmt)(v), { op: se.op });
+      }
+      if (o.stack) tipRow(t, 'transparent', '合計', yfmt(total));
+      if (o.extra) for (const r of o.extra(i)) tipRow(t, 'transparent', r[0], r[1]);
+    }, cx, cy);
+  }
+  function leave() {
+    hb.setAttribute('display', 'none'); cross.setAttribute('display', 'none');
+    dots.forEach(d => d.setAttribute('display', 'none'));
+    hideTip();
+  }
+  hit.addEventListener('pointermove', e => {
+    const r = svg.getBoundingClientRect();
+    at(clamp(Math.floor((e.clientX - r.left - m.l) / band), 0, n - 1), e.clientX, e.clientY);
+  });
+  hit.addEventListener('pointerleave', leave);
+  svg.addEventListener('focus', () => { const r = svg.getBoundingClientRect(); at(cur, r.left + x(cur), r.top + m.t + 10); });
+  svg.addEventListener('blur', leave);
+  svg.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const r = svg.getBoundingClientRect(), i = clamp(cur + (e.key === 'ArrowLeft' ? -1 : 1), 0, n - 1);
+    at(i, r.left + x(i), r.top + m.t + 10);
+  });
+}
+
+/* ---------- 棒グラフ(縦) ---------- */
+function columnChart(host, o) {
+  host.textContent = '';
+  const W = Math.max(260, host.clientWidth), H = o.height || 220;
+  const m = { l: 50, r: 12, t: 24, b: 26 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, n = o.items.length;
+  const svg = svgEl('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': o.label }, host);
+  const sc = niceScale(0, Math.max(...o.items.map(d => d.value)));
+  const y = v => m.t + ih - (v - sc.t0) / (sc.t1 - sc.t0) * ih;
+  for (const t of sc.ticks) {
+    svgEl('line', { class: t === 0 ? 'axisl' : 'gridl', x1: m.l, x2: W - m.r, y1: y(t), y2: y(t) }, svg);
+    svgEl('text', { class: 'tick', x: m.l - 8, y: y(t) + 4, 'text-anchor': 'end' }, svg).textContent = fmt0(t);
+  }
+  const band = iw / n, bw = Math.min(24, band - 8);
+  o.items.forEach((d, i) => {
+    const cx = m.l + band * (i + 0.5), top = y(d.value), bot = y(0), r = Math.min(4, bw / 2, bot - top);
+    const bar = svgEl('path', {
+      d: bot - top < 1 ? `M${cx - bw / 2},${bot}h${bw}v-1h-${bw}Z`
+        : `M${cx - bw / 2},${bot}V${top + r}Q${cx - bw / 2},${top} ${cx - bw / 2 + r},${top}H${cx + bw / 2 - r}Q${cx + bw / 2},${top} ${cx + bw / 2},${top + r}V${bot}Z`,
+      style: `fill:${o.color}`
+    }, svg);
+    svgEl('text', { class: 'vlab', x: cx, y: top - 6, 'text-anchor': 'middle' }, svg).textContent = fmt0(d.value);
+    svgEl('text', { class: 'tick', x: cx, y: H - 6, 'text-anchor': 'middle' }, svg).textContent = d.label;
+    const hit = svgEl('rect', { x: cx - band / 2, y: m.t, width: band, height: ih + 2, fill: 'transparent' }, svg);
+    hit.addEventListener('pointermove', e => {
+      bar.style.opacity = .75;
+      showTip(t => { h('div', 'tip-h', d.label, t); tipRow(t, o.color, o.name, fmt1(d.value)); }, e.clientX, e.clientY);
+    });
+    hit.addEventListener('pointerleave', () => { bar.style.opacity = ''; hideTip(); });
+  });
+}
+
+/* ---------- ヒートマップ ---------- */
+function heatmap(host, a, b) {
+  host.textContent = '';
+  const cell = 14, pitch = 16, ml = 26, mt = 20;
+  const off = dowOf(D.dates[a]);
+  const weeks = Math.floor((b - a + off) / 7) + 1;
+  const W = ml + weeks * pitch, H = mt + 7 * pitch;
+  const svg = svgEl('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': '曜日×週の投稿数ヒートマップ' }, host);
+  const vals = D.posts.slice(a, b + 1).slice().sort((p, q) => p - q);
+  const cap = Math.max(1, vals[Math.floor(vals.length * 0.95)] || 1);
+  const level = v => v <= 0 ? 0 : clamp(Math.ceil(v / cap * 7), 1, 7);
+  [0, 2, 4].forEach(r => svgEl('text', { class: 'tick', x: ml - 6, y: mt + r * pitch + 11, 'text-anchor': 'end' }, svg).textContent = WD[r]);
+  let lastLab = -1e9;
+  for (let i = a; i <= b; i++) {
+    const wk = Math.floor((i - a + off) / 7), r = dowOf(D.dates[i]), cx = ml + wk * pitch;
+    if ((D.dates[i].slice(8) === '01' || i === a) && cx - lastLab >= 44) {
+      lastLab = cx;
+      const [yy, mm] = D.dates[i].split('-');
+      svgEl('text', { class: 'tick', x: cx, y: 12 }, svg).textContent = `${yy}/${+mm}`;
+    }
+    const v = D.posts[i];
+    const c = svgEl('rect', { x: cx, y: mt + r * pitch, width: cell, height: cell, rx: 3, style: `fill:var(--seq-${level(v)})` }, svg);
+    c.addEventListener('pointermove', e => {
+      c.style.stroke = 'var(--ink)'; c.style.strokeWidth = 1.5;
+      showTip(t => { h('div', 'tip-h', fmtDateW(D.dates[i]), t); tipRow(t, 'var(--s1)', '投稿数', fmt0(v)); }, e.clientX, e.clientY);
+    });
+    c.addEventListener('pointerleave', () => { c.style.stroke = ''; hideTip(); });
+  }
+  const lg = $('#heat-legend');
+  lg.textContent = '少';
+  for (let l = 0; l <= 7; l++) { const s = h('i', null, null, lg); s.style.background = `var(--seq-${l})`; }
+  lg.appendChild(document.createTextNode(`多（${fmt0(cap)}件以上は最も濃い色）`));
+}
+
+/* ---------- スパークライン ---------- */
+function sparkline(host, vals, color) {
+  host.textContent = '';
+  const pts = vals.filter(v => v != null);
+  if (pts.length < 2) return;
+  const W = 120, H = 28, lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+  const px = i => 4 + i / (pts.length - 1) * (W - 12), py = v => H - 4 - (v - lo) / span * (H - 8);
+  const svg = svgEl('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true' }, host);
+  svgEl('path', { d: pts.map((v, i) => (i ? 'L' : 'M') + px(i).toFixed(1) + ',' + py(v).toFixed(1)).join(''), fill: 'none', 'stroke-linejoin': 'round', 'stroke-linecap': 'round', style: 'stroke:var(--muted);stroke-width:1.5' }, svg);
+  svgEl('circle', { cx: px(pts.length - 1), cy: py(pts[pts.length - 1]), r: 4, style: `fill:${color};stroke:var(--surface);stroke-width:2` }, svg);
+}
+function down(arr, k) {
+  if (arr.length <= k) return arr;
+  const out = [], step = arr.length / k;
+  for (let i = 0; i < k; i++) {
+    const s = arr.slice(Math.floor(i * step), Math.floor((i + 1) * step)).filter(v => v != null);
+    out.push(s.length ? s.reduce((p, q) => p + q, 0) / s.length : null);
+  }
+  return out;
+}
+
+/* ---------- KPI ---------- */
+function kpiOf(a, b) {
+  const len = b - a + 1;
+  const posts = pPosts[b + 1] - pPosts[a], tripped = pTripped[b + 1] - pTripped[a];
+  let threads = 0, peak = -1, peakI = a;
+  for (let i = a; i <= b; i++) {
+    threads += D.threads[i];
+    if (D.posts[i] > peak) { peak = D.posts[i]; peakI = i; }
+  }
+  return { len, posts, avg: posts / len, uniq: tripStats(a, b).count, rate: tripped / posts * 100, threads, peak, peakI };
+}
+function deltaNode(cur, prev, len, unit) {
+  const d = h('div', 't-delta');
+  if (prev == null) { d.textContent = '比較できる前期間なし'; return d; }
+  let diff, txt;
+  if (unit === 'pt') { diff = cur - prev; txt = `${fmt1(Math.abs(diff))}pt`; }
+  else { if (!prev) { d.textContent = '—'; return d; } diff = (cur - prev) / prev * 100; txt = `${fmt1(Math.abs(diff))}%`; }
+  const same = Math.abs(diff) < 0.05;
+  const b = h('b', same ? '' : diff > 0 ? 'up' : 'down', same ? '±0' : `${diff > 0 ? '▲' : '▼'} ${txt}`, d);
+  d.appendChild(document.createTextNode(`  前の${len}日比`));
+  return d;
+}
+function renderKpis(a, b) {
+  const host = $('#kpis');
+  host.textContent = '';
+  const cur = kpiOf(a, b), len = cur.len;
+  const prev = a - len >= 0 ? kpiOf(a - len, a - 1) : null;
+  const tile = (o) => {
+    const t = h('div', 'tile' + (o.hero ? ' hero' : ''), null, host);
+    h('div', 't-label', o.label, t);
+    h('div', 't-value', o.value, t);
+    t.appendChild(o.delta || h('div', 't-delta', o.sub || ''));
+    if (o.spark) sparkline(h('div', 't-spark', null, t), o.spark, o.color);
+  };
+  const sl = arr => down(arr.slice(a, b + 1), 30);
+  tile({ hero: true, label: '総投稿数', value: fmt0(cur.posts), delta: deltaNode(cur.posts, prev && prev.posts, len), spark: sl(D.posts), color: 'var(--s1)' });
+  tile({ label: '1日あたり投稿数', value: fmt0(cur.avg), delta: deltaNode(cur.avg, prev && prev.avg, len), spark: sl(ma7Posts), color: 'var(--s1)' });
+  tile({ label: 'ユニークトリップ数', value: fmt0(cur.uniq), delta: deltaNode(cur.uniq, prev && prev.uniq, len), spark: sl(D.uniqueTrips), color: 'var(--s2)' });
+  tile({ label: '新規スレッド数', value: fmt0(cur.threads), delta: deltaNode(cur.threads, prev && prev.threads, len), spark: sl(D.threads), color: 'var(--s3)' });
+  tile({ label: 'トリップ付き率', value: `${fmt1(cur.rate)}%`, delta: deltaNode(cur.rate, prev && prev.rate, len, 'pt'), spark: sl(rate), color: 'var(--s2)' });
+  tile({ label: '最大投稿日', value: fmt0(cur.peak), sub: fmtDateW(D.dates[cur.peakI]) });
+}
+
+/* ---------- 描画 ---------- */
+let R = { a: 0, b: N - 1 };
+function render() {
+  const { a, b } = R;
+  const x = D.dates.slice(a, b + 1), sl = arr => arr.slice(a, b + 1);
+  $('#rangeinfo').textContent = `${fmtDate(D.dates[a])} – ${fmtDate(D.dates[b])}（${b - a + 1}日間）`;
+
+  renderKpis(a, b);
+
+  const posts = { name: '日次', vals: sl(D.posts), color: 'var(--s1)', type: 'area', w: 1.5, op: .55 };
+  const ma = { name: '7日移動平均', vals: sl(ma7Posts), color: 'var(--s1)', type: 'line', end: true };
+  buildLegend($('#lg-posts'), [posts, ma]);
+  timeChart($('#ch-posts'), { x, series: [posts, ma], yMin: 0, height: 260, label: '投稿数の推移' });
+
+  const act = { name: '日次', vals: sl(D.uniqueTrips), color: 'var(--s2)', type: 'line', w: 1.5, op: .55 };
+  const act7 = { name: '直近7日', vals: sl(w7), color: 'var(--s2)', type: 'line', end: true };
+  buildLegend($('#lg-active'), [act, act7]);
+  timeChart($('#ch-active'), { x, series: [act, act7], yMin: 0, label: 'アクティブなトリップ数の推移' });
+
+  timeChart($('#ch-threads'), { x, series: [{ name: '新規スレッド', vals: sl(D.threads), color: 'var(--s3)', type: 'bar' }], yMin: 0, label: '新規スレッド数の推移' });
+
+  const r1 = { name: '日次', vals: sl(rate), color: 'var(--s2)', type: 'line', w: 1.5, op: .55, fmt: v => v.toFixed(1) + '%' };
+  const r7 = { name: '7日', vals: sl(rateMa7), color: 'var(--s2)', type: 'line', end: true, fmt: v => v.toFixed(1) + '%' };
+  buildLegend($('#lg-rate'), [r1, r7]);
+  timeChart($('#ch-rate'), { x, series: [r1, r7], yFmt: v => fmt1(v) + '%', label: 'トリップ付き投稿比率の推移' });
+
+  heatmap($('#ch-heat'), a, b);
+  const hs = $('#heat-scroll'); hs.scrollLeft = hs.scrollWidth;
+
+  // 曜日別平均
+  const sum = new Array(7).fill(0), cnt = new Array(7).fill(0);
+  for (let i = a; i <= b; i++) { const d = dowOf(D.dates[i]); sum[d] += D.posts[i]; cnt[d]++; }
+  columnChart($('#ch-dow'), { items: WD.map((l, d) => ({ label: l, value: cnt[d] ? sum[d] / cnt[d] : 0 })), color: 'var(--s1)', name: '1日平均の投稿数', label: '曜日別の平均投稿数' });
+
+  renderRank();
+  renderTable(a, b);
+}
+
+/* ---------- トリップ別ランキング(期間は全体の期間指定とは独立) ---------- */
+const RK = { key: 'posts', q: '', limit: 20, sel: null, a: Math.max(0, N - 90), b: N - 1 };
+const RK_COLS = [
+  ['rank', '順位', null], ['name', 'トリップ', null], ['posts', '投稿数', 'posts'], ['share', 'シェア', null],
+  ['days', '登場日数', 'days'], ['avg', '1日あたり', 'avg'], ['first', '初登場', null], ['last', '最終登場', null]
+];
+function tripDaily(t, a, b) {
+  const out = new Array(b - a + 1).fill(0);
+  for (let i = a; i <= b; i++) {
+    const p = D.tripDays[i];
+    for (let k = 0; k < p.length; k += 2) if (p[k] === t) { out[i - a] = p[k + 1]; break; }
+  }
+  return out;
+}
+function renderRank() {
+  const card = $('#rank-card');
+  if (!D.tripNames) { card.hidden = true; return; }
+  card.hidden = false;
+  const { a, b } = RK, st = tripStats(a, b);
+  $('#rank-range').textContent = `${fmtDate(D.dates[a])} – ${fmtDate(D.dates[b])}（${b - a + 1}日間）`;
+  let list = [], total = 0;
+  for (let t = 0; t < nTrips; t++) {
+    if (!st.days[t]) continue;
+    list.push({ t, name: D.tripNames[t], posts: st.posts[t], days: st.days[t], avg: st.posts[t] / st.days[t] });
+    total += st.posts[t];
+  }
+  list.sort((p, q) => q.posts - p.posts || p.t - q.t);
+  list.forEach((r, i) => { r.rank = i + 1; });
+  const q = RK.q.trim().toLowerCase();
+  if (q) list = list.filter(r => r.name.toLowerCase().includes(q));
+  if (RK.key !== 'posts') list.sort((p, r) => r[RK.key] - p[RK.key] || r.posts - p.posts);
+  $('#rank-count').textContent = `${fmt0(list.length)}件${q ? '（検索結果）' : ''}`;
+
+  const thead = $('#rank-table thead'), tbody = $('#rank-table tbody');
+  thead.textContent = ''; tbody.textContent = '';
+  const tr = h('tr', null, null, thead);
+  for (const [id, label, sortKey] of RK_COLS) {
+    const th = h('th', id === 'name' ? 'l' : '', null, tr);
+    if (sortKey) {
+      const btn = h('button', null, label + (RK.key === sortKey ? ' ▼' : ''), th);
+      btn.type = 'button';
+      if (RK.key === sortKey) th.setAttribute('aria-sort', 'descending');
+      btn.addEventListener('click', () => { RK.key = sortKey; RK.limit = 20; renderRank(); });
+    } else th.textContent = label;
+  }
+  for (const r of list.slice(0, RK.limit)) {
+    const row = h('tr', RK.sel === r.t ? 'sel' : '', null, tbody);
+    row.tabIndex = 0;
+    const cells = [r.rank, r.name, fmt0(r.posts), fmt1(r.posts / total * 100) + '%', fmt0(r.days), fmt1(r.avg),
+      fmtDate(D.dates[firstSeen[r.t]]), fmtDate(D.dates[lastSeen[r.t]])];
+    cells.forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
+    const pick = () => { RK.sel = r.t; renderRank(); $('#rank-detail').scrollIntoView({ block: 'nearest' }); };
+    row.addEventListener('click', pick);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+  }
+  const more = $('#rank-more');
+  more.hidden = list.length <= RK.limit;
+  more.textContent = `さらに20件表示（残り ${fmt0(list.length - RK.limit)}件）`;
+
+  const det = $('#rank-detail');
+  if (RK.sel == null) { det.hidden = true; return; }
+  det.hidden = false;
+  const t = RK.sel, s = tripDaily(t, a, b);
+  $('#rd-name').textContent = D.tripNames[t];
+  $('#rd-meta').textContent = `期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
+  timeChart($('#ch-trip'), { x: D.dates.slice(a, b + 1), series: [{ name: '投稿数', vals: s, color: 'var(--s2)', type: 'bar' }], yMin: 0, height: 180, label: `トリップ ${D.tripNames[t]} の日別投稿数` });
+}
+
+function renderTable(a, b) {
+  const thead = $('#tbl thead'), tbody = $('#tbl tbody');
+  thead.textContent = ''; tbody.textContent = '';
+  const cols = ['日付', '投稿数', 'トリップ付き', '付き率', 'ユニークトリップ', '直近7日ユニーク', '新規スレッド'];
+  const tr = h('tr', null, null, thead);
+  cols.forEach(c => h('th', null, c, tr));
+  for (let i = b; i >= a; i--) {
+    const r = h('tr', null, null, tbody);
+    [fmtDateW(D.dates[i]), fmt0(D.posts[i]), fmt0(D.tripped[i]), rate[i].toFixed(1) + '%', fmt0(D.uniqueTrips[i]),
+      w7[i] == null ? '—' : fmt0(w7[i]), fmt0(D.threads[i])].forEach(v => h('td', null, v, r));
+  }
+}
+
+/* ---------- 初期化 ---------- */
+const PRESETS = [['7日', 7], ['30日', 30], ['90日', 90], ['180日', 180], ['1年', 365], ['全期間', 0]];
+// 期間指定UI(プリセット + 日付入力)。全体用とランキング用で同じ部品を使う
+function rangeBar(ids, get, apply) {
+  const box = $(ids.presets), from = $(ids.from), to = $(ids.to);
+  const set = (a, b) => { if (a > b) [a, b] = [b, a]; apply(clamp(a, 0, N - 1), clamp(b, 0, N - 1)); };
+  for (const [label, n] of PRESETS) {
+    const btn = h('button', null, label, box);
+    btn.type = 'button'; btn.dataset.n = n;
+    btn.addEventListener('click', () => set(n ? N - n : 0, N - 1));
+  }
+  from.min = to.min = D.dates[0]; from.max = to.max = D.dates[N - 1];
+  const custom = () => {
+    const a = D.dates.indexOf(from.value), b = D.dates.indexOf(to.value);
+    if (a >= 0 && b >= 0) set(a, b);
+  };
+  from.addEventListener('change', custom); to.addEventListener('change', custom);
+  return function sync() {
+    const { a, b } = get();
+    from.value = D.dates[a]; to.value = D.dates[b];
+    box.querySelectorAll('button').forEach(btn => {
+      const n = +btn.dataset.n || N;
+      btn.setAttribute('aria-pressed', String(b === N - 1 && b - a + 1 === Math.min(n, N)));
+    });
+  };
+}
+const syncMain = rangeBar({ presets: '#presets', from: '#from', to: '#to' }, () => R, (a, b) => { R = { a, b }; syncMain(); render(); });
+const syncRank = rangeBar({ presets: '#rank-presets', from: '#rank-from', to: '#rank-to' }, () => RK, (a, b) => { RK.a = a; RK.b = b; RK.limit = 20; syncRank(); renderRank(); });
+function setRange(a, b) { R = { a, b }; syncMain(); render(); }
+{
+
+  $('#period').textContent = `データ期間 ${fmtDate(D.meta.first)} – ${fmtDate(D.meta.last)}（${N}日）`;
+  const notes = $('#notes');
+  [
+    '「ユニークトリップ数」は選択期間内に1回以上投稿したトリップの種類数です。' + (D.tripNames ? '' : 'トリップ文字列自体はこのページに含まれていません。'),
+    D.meta.partial ? `${fmtDate(D.meta.last)} は集計途中の可能性があります。この日を含む期間の日次・7日移動平均は低めに出ます。` : null,
+    D.meta.excluded ? `${fmtDate(D.meta.excluded)} は集計途中の可能性があるため除外しています。` : null,
+    `生成: ${D.meta.generated}`
+  ].filter(Boolean).forEach(t => h('li', null, t, notes));
+
+  const root = document.documentElement;
+  let saved = null;
+  try { saved = localStorage.getItem('theme'); } catch (e) {}
+  root.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  $('#theme').addEventListener('click', () => {
+    const t = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = t;
+    try { localStorage.setItem('theme', t); } catch (e) {}
+  });
+
+  // 折りたたみ中は幅が0で描画されるため、開いたときに描き直す
+  $('#rank-card').addEventListener('toggle', () => { if ($('#rank-card').open) renderRank(); });
+  $('#rank-q').addEventListener('input', e => { RK.q = e.target.value; RK.limit = 20; renderRank(); });
+  $('#rank-more').addEventListener('click', () => { RK.limit += 20; renderRank(); });
+  $('#rd-close').addEventListener('click', () => { RK.sel = null; renderRank(); });
+
+  let raf = 0, lastW = 0;
+  new ResizeObserver(() => {
+    const w = document.querySelector('.wrap').clientWidth;
+    if (w === lastW) return;
+    lastW = w;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(render);
+  }).observe(document.querySelector('.wrap'));
+
+  syncRank();
+  setRange(Math.max(0, N - 90), N - 1);
+}
+})();
+</script>
+</body>
+</html>
