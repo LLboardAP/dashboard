@@ -1,7 +1,9 @@
 """CSV -> dashboard.html builder.
 
-daily_stats.csv / trip_daily_stats.csv を集計して template.html に埋め込み、
-単体で開ける HTML を出力する。データを更新したら再実行するだけ。
+data/all_daily_stats.csv / data/all_trip_daily_stats.csv(無ければ直下の同名ファイル)を集計して
+template.html に埋め込み、単体で開ける HTML を出力する。データを更新したら再実行するだけ。
+入力の all_* は fetch_shitaraba_archive_stats.py の出力(過去ログ + 現行スレッドの合算)。
+all_* が無い場合だけ、旧形式の daily_stats.csv / trip_daily_stats.csv(現行スレッドのみ)を使う。
 
     python build.py                       # dashboard.html を出力(最新日も含める)
     python build.py --out _site/index.html   # 出力先を指定(GitHub Pages 用)
@@ -18,6 +20,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent
+DATA_DIR = ROOT / "data"  # 非公開リポジトリ(git submodule)。無ければ ROOT 直下の CSV を使う
 PLACEHOLDER = "/*__DATA__*/null"
 JST = dt.timezone(dt.timedelta(hours=9))  # 実行環境(GitHub Actions は UTC)によらず日本時間で判定する
 
@@ -27,6 +30,15 @@ TRIP_COLS = ["trip", "date", "post_count"]
 
 def fail(msg):
     sys.exit(f"[error] {msg}")
+
+
+def default_csv(*names):
+    """names の先頭ほど優先。data/ → ROOT の順に探し、どれも無ければ先頭の名前(エラー表示用)を返す。"""
+    for name in names:
+        for base in (DATA_DIR, ROOT):
+            if (base / name).exists():
+                return base / name
+    return ROOT / names[0]
 
 
 def read_csv(path, cols):
@@ -62,8 +74,8 @@ def to_date(s, path, line):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--daily", type=Path, default=ROOT / "daily_stats.csv")
-    ap.add_argument("--trips-csv", type=Path, default=ROOT / "trip_daily_stats.csv")
+    ap.add_argument("--daily", type=Path, default=default_csv("all_daily_stats.csv", "daily_stats.csv"))
+    ap.add_argument("--trips-csv", type=Path, default=default_csv("all_trip_daily_stats.csv", "trip_daily_stats.csv"))
     ap.add_argument("--template", type=Path, default=ROOT / "template.html")
     ap.add_argument("--out", type=Path, default=ROOT / "dashboard.html")
     ap.add_argument("--exclude-today", action="store_true", help="今日の日付(集計途中の可能性)を除外する")
@@ -149,6 +161,7 @@ def main():
     args.out.write_text(html.replace(PLACEHOLDER, payload), encoding="utf-8")
 
     print(f"OK {args.out}: {dates[0]} - {dates[-1]} ({len(dates)}日, トリップ{len(trip_ids)}件, {args.out.stat().st_size/1024:.0f}KB)")
+    print(f"   入力: {args.daily} / {args.trips_csv}")
     if excluded:
         print(f"   {excluded} は集計途中の可能性があるため除外しました")
     elif partial:

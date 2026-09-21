@@ -1,16 +1,16 @@
 name: Build and deploy dashboard
 
 on:
-  # CSV や画面のソースが更新されたら再ビルド
+  # 画面のソースが更新されたら再ビルド(CSV は非公開の data リポジトリにあるため、ここでは監視できない)
   push:
     branches: [main]
     paths:
-      - daily_stats.csv
-      - trip_daily_stats.csv
       - build.py
       - template.html
+      - .gitmodules
+      - data
       - .github/workflows/pages.yml
-  # 6時間ごとに再ビルド(CSV が別のワークフロー等から更新された場合の取りこぼし対策)
+  # 6時間ごとに再ビルド(data リポジトリの最新 CSV を取得して反映する)
   schedule:
     - cron: "20 */6 * * *"
   # 手動実行(Actions タブの "Run workflow")
@@ -28,8 +28,24 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write  # 下の keepalive 用
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # 非公開の data リポジトリを、読み取り専用の Deploy key で取得する
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DATA_DEPLOY_KEY }}
+      - name: Fetch latest data (private submodule)
+        run: |
+          git config --global url."git@github.com:LLboardAP/dashboard-data.git".insteadOf "https://github.com/LLboardAP/dashboard-data.git"
+          # 公開側に記録されたコミットではなく、data リポジトリの最新を取得する
+          git submodule update --init --remote --depth 1 data
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -38,6 +54,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+      # 公開リポジトリは60日間コミットがないと定期実行が止まるため、ワークフローを再有効化して延命を試みる(ベストエフォート)
+      - name: Keepalive (best effort)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/pages.yml/enable"
 
   deploy:
     needs: build
