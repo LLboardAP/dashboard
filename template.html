@@ -229,6 +229,13 @@ input[type="search"] {
     <div class="sub" id="rangeinfo"></div>
   </div>
 
+  <div class="filters" style="margin-bottom:16px" role="group" aria-label="日付を指定して表示">
+    <label class="sub" for="tbl-jump">日付で表示</label>
+    <input type="date" id="tbl-jump" aria-label="表示する日付">
+    <button class="iconbtn" id="tbl-prev" type="button">◀ 前日</button>
+    <button class="iconbtn" id="tbl-next" type="button">翌日 ▶</button>
+  </div>
+
   <div class="daymode" id="daymode" hidden></div>
 
   <section class="kpis" id="kpis" aria-label="主要指標"></section>
@@ -276,16 +283,9 @@ input[type="search"] {
     <div class="heat-legend" id="heat-legend"></div>
   </section>
 
-  <div class="filters" style="margin-bottom:16px" role="group" aria-label="日付を指定して表示">
-    <label class="sub" for="tbl-jump">日付で表示</label>
-    <input type="date" id="tbl-jump" aria-label="表示する日付">
-    <button class="iconbtn" id="tbl-prev" type="button">◀ 前日</button>
-    <button class="iconbtn" id="tbl-next" type="button">翌日 ▶</button>
-  </div>
-
   <details class="card" id="tbl" style="margin-bottom:16px">
     <summary>日別データをテーブルで表示</summary>
-    <div class="cap" style="margin-top:6px">上の日付指定、または行のクリックで、その日をハイライトして表示します</div>
+    <div class="cap" style="margin-top:6px">上部の「日付で表示」、または行のクリックで、その日をハイライトして表示します</div>
     <div class="tablewrap"><table><thead></thead><tbody></tbody></table></div>
   </details>
 
