@@ -18,6 +18,7 @@
   --border: rgba(11,11,11,.10);
   --s1: #2a78d6;
   --s2: #eb6834;
+  --up: #006300;
   --hover: rgba(11,11,11,.06);
 }
 @media (prefers-color-scheme: dark) {
@@ -25,7 +26,7 @@
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --border: rgba(255,255,255,.10);
-    --s1: #3987e5; --s2: #d95926;
+    --s1: #3987e5; --s2: #d95926; --up: #0ca30c;
     --hover: rgba(255,255,255,.08);
   }
 }
@@ -33,7 +34,7 @@
   color-scheme: dark;
   --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
   --grid: #2c2c2a; --border: rgba(255,255,255,.10);
-  --s1: #3987e5; --s2: #d95926;
+  --s1: #3987e5; --s2: #d95926; --up: #0ca30c;
   --hover: rgba(255,255,255,.08);
 }
 * { box-sizing: border-box; }
@@ -97,6 +98,11 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 .detail-h b { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
 .detail-h .sub { margin: 0; }
 .detail-h .iconbtn { margin-left: auto; padding: 2px 10px; }
+.detail-h .iconbtn + .iconbtn { margin-left: 0; }
+.share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }
+#rd-share-url { flex: 1 1 320px; min-width: 0; font: inherit; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; }
+#rd-share-msg { color: var(--up); }
 
 .rd-posts summary { cursor: pointer; }
 .rd-post { border-bottom: 1px solid var(--border); padding: 8px 0; }
@@ -160,7 +166,12 @@ a.rd-post-thread:hover { text-decoration: underline; }
   <div class="detail" id="rank-detail" hidden>
     <div class="detail-h">
       <b id="rd-name"></b><span class="sub" id="rd-meta"></span>
+      <button class="iconbtn" id="rd-share" type="button">共有URLをコピー</button>
       <button class="iconbtn" id="rd-close" type="button">閉じる</button>
+    </div>
+    <div class="share-row" id="rd-share-row" hidden>
+      <input type="text" id="rd-share-url" readonly aria-label="このトリップの共有URL">
+      <span class="sub" id="rd-share-msg"></span>
     </div>
     <div class="filters" style="margin:2px 0 10px" role="group" aria-label="このトリップを追いかける期間">
       <label class="sub" style="margin:0">追いかける期間</label>
@@ -320,9 +331,11 @@ function render() {
 
 function selectTrip(t) {
   if (RK.sel !== t) {
-    // 別のトリップに切り替えたら、追いかける期間はいったん既定(90日)に戻す
+    // 別のトリップに切り替えたら、追いかける期間はいったん既定(90日)に戻し、
+    // 前のトリップの共有URL表示も隠す
     PD = { a: Math.max(0, N - 90), b: N - 1 };
     syncPD();
+    $('#rd-share-row').hidden = true;
   }
   RK.sel = t;
   render();
@@ -408,6 +421,36 @@ $('#rd-close').addEventListener('click', () => { RK.sel = null; render(); });
 $('#rd-posts-q').addEventListener('input', e => { RP.q = e.target.value; RP.limit = 20; if (RP.trip) renderTripPosts(RP.trip); });
 $('#rd-posts-more').addEventListener('click', () => { RP.limit += 20; if (RP.trip) renderTripPosts(RP.trip); });
 
+// 選択中のトリップを、追いかける期間つきで他の人と共有するためのURL
+function buildShareUrl() {
+  const url = new URL(location.href);
+  url.search = '';
+  url.searchParams.set('trip', D.tripNames[RK.sel]);
+  url.searchParams.set('from', D.dates[PD.a]);
+  url.searchParams.set('to', D.dates[PD.b]);
+  return url.toString();
+}
+$('#rd-share').addEventListener('click', () => {
+  if (RK.sel == null) return;
+  const url = buildShareUrl();
+  const input = $('#rd-share-url'), msg = $('#rd-share-msg');
+  $('#rd-share-row').hidden = false;
+  input.value = url;
+  input.focus(); input.select();
+  msg.textContent = '';
+  const showCopied = () => { msg.textContent = 'コピーしました'; setTimeout(() => { msg.textContent = ''; }, 2500); };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(url).then(showCopied, () => { msg.textContent = '選択済みです。Ctrl+C でコピーしてください'; });
+  } else {
+    try {
+      if (document.execCommand('copy')) showCopied();
+      else msg.textContent = '選択済みです。Ctrl+C でコピーしてください';
+    } catch (e) {
+      msg.textContent = '選択済みです。Ctrl+C でコピーしてください';
+    }
+  }
+});
+
 const notes = $('#notes');
 [
   'ユニークトリップ数は、指定した期間内に1回以上投稿したトリップの重複無しの数です(日別の値の合計ではありません)。',
@@ -430,7 +473,12 @@ syncPD();
 render();
 const params = new URLSearchParams(location.search);
 const initialTrip = params.get('trip');
-if (initialTrip) selectTripByName(initialTrip);
+if (initialTrip && selectTripByName(initialTrip)) {
+  // 共有URLの from/to があれば、既定(90日)の代わりにその範囲を追いかける期間にする
+  const a = D.dates.indexOf(params.get('from') || '');
+  const b = D.dates.indexOf(params.get('to') || '');
+  if (a >= 0 && b >= 0) setPdRange(a, b);
+}
 })();
 </script>
 </body>
