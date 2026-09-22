@@ -90,6 +90,12 @@ input[type="date"] {
 }
 :focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
 
+.daymode {
+  display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; margin: -6px 0 16px;
+  color: var(--ink2); font-size: 13px;
+}
+.daymode .iconbtn { padding: 3px 10px; font-size: 12px; }
+
 /* cards */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
 .card h2 { font-size: 15px; margin: 0; font-weight: 650; }
@@ -115,7 +121,6 @@ svg.chart:focus-visible { outline-offset: 4px; border-radius: 4px; }
 .kpis { display: grid; gap: 12px; margin-bottom: 16px; grid-template-columns: 2fr repeat(3, 1fr); }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tile.hero { grid-row: span 2; justify-content: center; }
-.tile:last-child { grid-column: span 2; }
 .t-label { color: var(--ink2); font-size: 13px; }
 .t-value { font-size: 26px; font-weight: 650; line-height: 1.2; letter-spacing: -.01em; }
 .hero .t-value { font-size: 56px; line-height: 1.1; }
@@ -198,7 +203,6 @@ input[type="search"] {
   .g2 { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tile.hero { grid-column: span 2; grid-row: auto; }
-  .tile:last-child { grid-column: auto; }
   .hero .t-value { font-size: 48px; }
   .hright { flex-direction: column-reverse; align-items: flex-end; }
 }
@@ -225,6 +229,8 @@ input[type="search"] {
     <div class="sub" id="rangeinfo"></div>
   </div>
 
+  <div class="daymode" id="daymode" hidden></div>
+
   <section class="kpis" id="kpis" aria-label="主要指標"></section>
 
   <section class="card" style="margin-bottom:16px">
@@ -243,7 +249,8 @@ input[type="search"] {
     </section>
     <section class="card">
       <div class="card-h"><h2>新規スレッド数</h2><div class="yr" id="yr-threads"></div></div>
-      <div class="cap">1日あたり</div>
+      <div class="cap">1日あたりの新規スレッド数と7日移動平均</div>
+      <div class="legend" id="lg-threads"></div>
       <div class="chart-host" id="ch-threads"></div>
     </section>
   </div>
@@ -378,8 +385,9 @@ function windowed(fnSum) {
   return out;
 }
 const prefix = arr => { const p = [0]; for (const v of arr) p.push(p[p.length - 1] + v); return p; };
-const pPosts = prefix(D.posts), pTripped = prefix(D.tripped);
+const pPosts = prefix(D.posts), pTripped = prefix(D.tripped), pThreads = prefix(D.threads);
 const ma7Posts = windowed((a, b) => (pPosts[b + 1] - pPosts[a]) / 7);
+const ma7Threads = windowed((a, b) => (pThreads[b + 1] - pThreads[a]) / 7);
 const rate = D.posts.map((p, i) => D.tripped[i] / p * 100);
 const rateMa7 = windowed((a, b) => (pTripped[b + 1] - pTripped[a]) / (pPosts[b + 1] - pPosts[a]) * 100);
 
@@ -728,24 +736,32 @@ function kpiOf(a, b) {
   }
   let uniqSum = 0;
   for (let i = a; i <= b; i++) uniqSum += D.uniqueTrips[i];
-  return { len, posts, avg: posts / len, uniqAvg: uniqSum / len, rate: tripped / posts * 100, threads, peak, peakI };
+  return { len, posts, tripped, avg: posts / len, threadAvg: threads / len, uniqAvg: uniqSum / len, rate: tripped / posts * 100, threads, peak, peakI };
 }
-function deltaNode(cur, prev, len, unit) {
+// label は比較対象の説明("前の90日比" / "前日比" など)
+function deltaNode(cur, prev, label, unit) {
   const d = h('div', 't-delta');
-  if (prev == null) { d.textContent = '比較できる前期間なし'; return d; }
+  if (prev == null) { d.textContent = '比較できる前日・前期間なし'; return d; }
   let diff, txt;
   if (unit === 'pt') { diff = cur - prev; txt = `${fmt1(Math.abs(diff))}pt`; }
   else { if (!prev) { d.textContent = '—'; return d; } diff = (cur - prev) / prev * 100; txt = `${fmt1(Math.abs(diff))}%`; }
   const same = Math.abs(diff) < 0.05;
   const b = h('b', same ? '' : diff > 0 ? 'up' : 'down', same ? '±0' : `${diff > 0 ? '▲' : '▼'} ${txt}`, d);
-  d.appendChild(document.createTextNode(`  前の${len}日比`));
+  d.appendChild(document.createTextNode(`  ${label}`));
   return d;
+}
+// 非hero タイルが3の倍数でないとき、最後の1枚を2列分に広げて右側の空きを埋める(3列レイアウトの幅でのみ)
+function fillGridGap(host) {
+  if (!matchMedia('(min-width: 901px)').matches) return;
+  const tiles = host.querySelectorAll('.tile:not(.hero)');
+  if (tiles.length && tiles.length % 3 === 2) tiles[tiles.length - 1].style.gridColumn = 'span 2';
 }
 function renderKpis(a, b) {
   const host = $('#kpis');
   host.textContent = '';
   const cur = kpiOf(a, b), len = cur.len;
   const prev = a - len >= 0 ? kpiOf(a - len, a - 1) : null;
+  const dLabel = `前の${len}日比`;
   const tile = (o) => {
     const t = h('div', 'tile' + (o.hero ? ' hero' : ''), null, host);
     h('div', 't-label', o.label, t);
@@ -754,12 +770,37 @@ function renderKpis(a, b) {
     if (o.spark) sparkline(h('div', 't-spark', null, t), o.spark, o.color);
   };
   const sl = arr => down(arr.slice(a, b + 1), 30);
-  tile({ hero: true, label: '総投稿数', value: fmt0(cur.posts), delta: deltaNode(cur.posts, prev && prev.posts, len), spark: sl(D.posts), color: 'var(--s1)' });
-  tile({ label: '1日あたり投稿数', value: fmt0(cur.avg), delta: deltaNode(cur.avg, prev && prev.avg, len), spark: sl(ma7Posts), color: 'var(--s1)' });
-  tile({ label: '1日あたりユニークトリップ数', value: fmt0(cur.uniqAvg), delta: deltaNode(cur.uniqAvg, prev && prev.uniqAvg, len), spark: sl(D.uniqueTrips), color: 'var(--s2)' });
-  tile({ label: '新規スレッド数', value: fmt0(cur.threads), delta: deltaNode(cur.threads, prev && prev.threads, len), spark: sl(D.threads), color: 'var(--s3)' });
-  tile({ label: 'トリップ付き率', value: `${fmt1(cur.rate)}%`, delta: deltaNode(cur.rate, prev && prev.rate, len, 'pt'), spark: sl(rate), color: 'var(--s2)' });
+  tile({ hero: true, label: '総投稿数', value: fmt0(cur.posts), delta: deltaNode(cur.posts, prev && prev.posts, dLabel), spark: sl(D.posts), color: 'var(--s1)' });
+  tile({ label: '1日あたり投稿数', value: fmt0(cur.avg), delta: deltaNode(cur.avg, prev && prev.avg, dLabel), spark: sl(ma7Posts), color: 'var(--s1)' });
+  tile({ label: '1日あたりユニークトリップ数', value: fmt0(cur.uniqAvg), delta: deltaNode(cur.uniqAvg, prev && prev.uniqAvg, dLabel), spark: sl(D.uniqueTrips), color: 'var(--s2)' });
+  tile({ label: '新規スレッド数', value: fmt0(cur.threads), delta: deltaNode(cur.threads, prev && prev.threads, dLabel), spark: sl(D.threads), color: 'var(--s3)' });
+  tile({ label: '1日あたり新規スレッド数', value: fmt1(cur.threadAvg), delta: deltaNode(cur.threadAvg, prev && prev.threadAvg, dLabel), spark: sl(ma7Threads), color: 'var(--s3)' });
+  tile({ label: 'トリップ付き率', value: `${fmt1(cur.rate)}%`, delta: deltaNode(cur.rate, prev && prev.rate, dLabel, 'pt'), spark: sl(rate), color: 'var(--s2)' });
   tile({ label: '最大投稿日', value: fmt0(cur.peak), sub: fmtDateW(D.dates[cur.peakI]) });
+  fillGridGap(host);
+}
+// 特定の1日だけのKPI(日付ジャンプで表示)。比較は前日。
+function renderKpisDay(i) {
+  const host = $('#kpis');
+  host.textContent = '';
+  const cur = kpiOf(i, i), prev = i > 0 ? kpiOf(i - 1, i - 1) : null;
+  const w7i = w7[i];
+  const trailing7 = i >= 6 ? pPosts[i + 1] - pPosts[Math.max(0, i - 6)] : null;
+  const tile = (o) => {
+    const t = h('div', 'tile' + (o.hero ? ' hero' : ''), null, host);
+    h('div', 't-label', o.label, t);
+    h('div', 't-value', o.value, t);
+    t.appendChild(o.delta || h('div', 't-delta', o.sub || ''));
+    if (o.spark) sparkline(h('div', 't-spark', null, t), o.spark, o.color);
+  };
+  const sl2 = arr => down(arr.slice(Math.max(0, i - 29), i + 1), 30);
+  tile({ hero: true, label: '投稿数', value: fmt0(cur.posts), delta: deltaNode(cur.posts, prev && prev.posts, '前日比'), spark: sl2(D.posts), color: 'var(--s1)' });
+  tile({ label: 'トリップ付き投稿数', value: fmt0(cur.tripped), delta: deltaNode(cur.tripped, prev && prev.tripped, '前日比'), spark: sl2(D.tripped), color: 'var(--s1)' });
+  tile({ label: 'ユニークトリップ数', value: fmt0(cur.uniqAvg), delta: deltaNode(cur.uniqAvg, prev && prev.uniqAvg, '前日比'), spark: sl2(D.uniqueTrips), color: 'var(--s2)' });
+  tile({ label: '新規スレッド数', value: fmt0(cur.threads), delta: deltaNode(cur.threads, prev && prev.threads, '前日比'), spark: sl2(D.threads), color: 'var(--s3)' });
+  tile({ label: 'トリップ付き率', value: `${fmt1(cur.rate)}%`, delta: deltaNode(cur.rate, prev && prev.rate, '前日比', 'pt'), spark: sl2(rate), color: 'var(--s2)' });
+  tile({ label: '直近7日の投稿数', value: trailing7 == null ? '—' : fmt0(trailing7), sub: 'この日を含む7日間の合計' });
+  fillGridGap(host);
 }
 
 /* ---------- 縦軸の範囲(グラフごと。空欄 = 自動) ---------- */
@@ -800,12 +841,25 @@ function yrReset(key) {
 
 /* ---------- 描画 ---------- */
 let R = { a: 0, b: N - 1 };
+let DAYMODE = null;   // 特定の1日を選んでいるときは日付文字列、それ以外は null(この間もチャート類は R の期間のまま)
 function render() {
   const { a, b } = R;
   const x = D.dates.slice(a, b + 1), sl = arr => arr.slice(a, b + 1);
   $('#rangeinfo').textContent = `${fmtDate(D.dates[a])} – ${fmtDate(D.dates[b])}（${b - a + 1}日間）`;
 
-  renderKpis(a, b);
+  const dm = $('#daymode');
+  if (DAYMODE) {
+    dm.hidden = false;
+    dm.textContent = '';
+    dm.appendChild(document.createTextNode(`${fmtDateW(DAYMODE)} のKPIを表示中  `));
+    const btn = h('button', 'iconbtn', '期間の集計に戻す', dm);
+    btn.type = 'button';
+    btn.addEventListener('click', exitDayMode);
+    renderKpisDay(D.dates.indexOf(DAYMODE));
+  } else {
+    dm.hidden = true;
+    renderKpis(a, b);
+  }
 
   const posts = { name: '日次', vals: sl(D.posts), color: 'var(--s1)', type: 'area', w: 1.5, op: .55 };
   const ma = { name: '7日移動平均', vals: sl(ma7Posts), color: 'var(--s1)', type: 'line', end: true };
@@ -817,7 +871,10 @@ function render() {
   buildLegend($('#lg-active'), [act, act7]);
   yrSync('active', timeChart($('#ch-active'), { x, series: [act, act7], yMin: 0, label: 'アクティブなトリップ数の推移', yr: YR.active }));
 
-  yrSync('threads', timeChart($('#ch-threads'), { x, series: [{ name: '新規スレッド', vals: sl(D.threads), color: 'var(--s3)', type: 'bar' }], yMin: 0, label: '新規スレッド数の推移', yr: YR.threads }));
+  const th = { name: '日次', vals: sl(D.threads), color: 'var(--s3)', type: 'bar' };
+  const th7 = { name: '7日移動平均', vals: sl(ma7Threads), color: 'var(--s3)', type: 'line', end: true };
+  buildLegend($('#lg-threads'), [th, th7]);
+  yrSync('threads', timeChart($('#ch-threads'), { x, series: [th, th7], yMin: 0, label: '新規スレッド数の推移', yr: YR.threads }));
 
   const r1 = { name: '日次', vals: sl(rate), color: 'var(--s2)', type: 'line', w: 1.5, op: .55, fmt: v => v.toFixed(1) + '%' };
   const r7 = { name: '7日', vals: sl(rateMa7), color: 'var(--s2)', type: 'line', end: true, fmt: v => v.toFixed(1) + '%' };
@@ -927,18 +984,20 @@ function renderTable(a, b) {
 // 指定した日を選び、テーブルを開いてその行が見えるようにする。上部の期間外の日なら、
 // 同じ長さの期間をその日が中心になるようずらす(期間そのものが動くのは表内クリックのときも含め想定内)
 function selectDay(dateStr) {
+  DAYMODE = dateStr;   // 上部のKPIを、この日だけの実績に切り替える
   TBL.sel = dateStr;
   $('#tbl-jump').value = dateStr;
   const idx = D.dates.indexOf(dateStr);
   const inRange = idx >= R.a && idx <= R.b;
-  if (inRange) renderTable(R.a, R.b);
+  if (inRange) render();
   else {
     const width = R.b - R.a + 1, newA = clamp(idx - Math.floor(width / 2), 0, Math.max(0, N - width));
-    setRange(newA, Math.min(N - 1, newA + width - 1));
+    shiftRangeForDay(newA, Math.min(N - 1, newA + width - 1));
   }
   $('#tbl').open = true;
   requestAnimationFrame(() => { const row = document.getElementById('day-' + dateStr); if (row) row.scrollIntoView({ block: 'center' }); });
 }
+function exitDayMode() { DAYMODE = null; render(); }
 
 /* ---------- 初期化 ---------- */
 const PRESETS = [['7日', 7], ['30日', 30], ['90日', 90], ['180日', 180], ['1年', 365], ['全期間', 0]];
@@ -966,9 +1025,12 @@ function rangeBar(ids, get, apply) {
     });
   };
 }
-const syncMain = rangeBar({ presets: '#presets', from: '#from', to: '#to' }, () => R, (a, b) => { R = { a, b }; syncMain(); render(); });
+const syncMain = rangeBar({ presets: '#presets', from: '#from', to: '#to' }, () => R, (a, b) => setRange(a, b));
 const syncRank = rangeBar({ presets: '#rank-presets', from: '#rank-from', to: '#rank-to' }, () => RK, (a, b) => { RK.a = a; RK.b = b; RK.limit = 20; syncRank(); renderRank(); });
-function setRange(a, b) { R = { a, b }; syncMain(); render(); }
+// 上部の期間指定(プリセット/日付入力)から呼ばれる。ユーザーが期間を選び直した合図なので、日別表示は終了する
+function setRange(a, b) { R = { a, b }; DAYMODE = null; syncMain(); render(); }
+// selectDay からのみ呼ぶ内部用。日別表示を保ったまま、表示する期間だけをずらす
+function shiftRangeForDay(a, b) { R = { a, b }; syncMain(); render(); }
 {
 
   $('#period').textContent = `データ期間 ${fmtDate(D.meta.first)} – ${fmtDate(D.meta.last)}（${N}日）`;
