@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>トリップ検索</title>
+<meta name="description" content="指定した期間のユニークトリップ数・新規スレッド数の確認と、トリップ別の投稿本文の検索。">
+<meta name="robots" content="index,follow">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --border: rgba(11,11,11,.10);
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --hover: rgba(11,11,11,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --border: rgba(255,255,255,.10);
+    --s1: #3987e5; --s2: #d95926;
+    --hover: rgba(255,255,255,.08);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --border: rgba(255,255,255,.10);
+  --s1: #3987e5; --s2: #d95926;
+  --hover: rgba(255,255,255,.08);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
+}
+.wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; }
+.sub { color: var(--ink2); font-size: 13px; margin-top: 2px; }
+button { font: inherit; color: inherit; }
+a { color: var(--s1); }
+.iconbtn {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer; color: var(--ink2); white-space: nowrap;
+  text-decoration: none; display: inline-block;
+}
+.iconbtn:hover { background: var(--hover); }
+.hright { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; }
+
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.seg button { border: 0; background: none; padding: 6px 12px; cursor: pointer; color: var(--ink2); border-right: 1px solid var(--border); }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--hover); }
+.seg button[aria-pressed="true"] { color: var(--ink); font-weight: 650; background: var(--hover); }
+.seg button[aria-pressed="true"]::before { content: "✓ "; }
+.range { display: inline-flex; align-items: center; gap: 6px; color: var(--ink2); }
+input[type="date"], input[type="search"] {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 8px;
+}
+input[type="search"] { padding: 5px 10px; min-width: 200px; }
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+
+.kpis { display: grid; gap: 12px; margin-bottom: 16px; grid-template-columns: repeat(2, 1fr); }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.t-label { color: var(--ink2); font-size: 13px; }
+.t-value { font-size: 32px; font-weight: 650; line-height: 1.2; letter-spacing: -.01em; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; margin-bottom: 16px; }
+details summary { cursor: pointer; font-weight: 650; font-size: 15px; }
+.cap { color: var(--ink2); font-size: 12px; margin: 2px 0 8px; }
+.rank-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.tablewrap { max-height: 420px; overflow: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; }
+#rank-table tbody tr { cursor: pointer; }
+#rank-table tbody tr:hover, #rank-table tbody tr.sel { background: var(--hover); }
+#rank-table td.l, #rank-table th.l { text-align: left; }
+#rank-table td.trip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.rank-more { margin-top: 10px; }
+
+.detail { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.detail-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 6px; }
+.detail-h b { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
+.detail-h .sub { margin: 0; }
+.detail-h .iconbtn { margin-left: auto; padding: 2px 10px; }
+
+.rd-posts summary { cursor: pointer; }
+.rd-post { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.rd-post:last-child { border-bottom: none; }
+.rd-post-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.rd-post-body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; }
+
+.notes { color: var(--ink2); font-size: 12px; margin-top: 20px; }
+.notes li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>トリップ検索</h1>
+      <div class="sub" id="period"></div>
+    </div>
+    <div class="hright">
+      <a class="iconbtn" href="index.html">← ダッシュボードへ</a>
+      <button class="iconbtn" id="theme" type="button" aria-label="表示テーマを切り替え">◐ テーマ</button>
+    </div>
+  </header>
+
+  <div class="filters" role="group" aria-label="集計期間">
+    <div class="seg" id="presets"></div>
+    <div class="range">
+      <input type="date" id="from" aria-label="開始日"> – <input type="date" id="to" aria-label="終了日">
+    </div>
+  </div>
+  <div class="filters" role="group" aria-label="日付を指定して見る">
+    <label class="sub" for="daypick">カレンダーで1日だけ見る</label>
+    <input type="date" id="daypick" aria-label="表示する日付">
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="主要指標">
+    <div class="tile">
+      <div class="t-label" id="k1-label">ユニークトリップ数</div>
+      <div class="t-value" id="k1-value">–</div>
+    </div>
+    <div class="tile">
+      <div class="t-label" id="k2-label">新規スレッド数</div>
+      <div class="t-value" id="k2-value">–</div>
+    </div>
+  </section>
+
+  <details class="card" id="search-card" open>
+    <summary>トリップを探す</summary>
+    <div class="cap">上で指定した期間内の投稿数順です。一覧から選ぶか、検索欄にトリップ文字列を入力して Enter で直接選べます</div>
+    <div class="rank-tools">
+      <input type="search" id="rank-q" placeholder="トリップで検索(部分一致 / Enterで直接選択)" aria-label="トリップで検索">
+      <span class="sub" id="rank-count"></span>
+    </div>
+    <div class="tablewrap"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
+    <button class="iconbtn rank-more" id="rank-more" type="button"></button>
+  </details>
+
+  <div class="detail" id="rank-detail" hidden>
+    <div class="detail-h">
+      <b id="rd-name"></b><span class="sub" id="rd-meta"></span>
+      <button class="iconbtn" id="rd-close" type="button">閉じる</button>
+    </div>
+    <details class="card rd-posts" id="rd-posts-card" open style="margin-bottom:0">
+      <summary>この人の投稿</summary>
+      <div class="cap" style="margin-top:6px">直近の投稿本文です。保持期間を過ぎた投稿は表示されません</div>
+      <div class="rank-tools">
+        <input type="search" id="rd-posts-q" placeholder="投稿内容で絞り込み" aria-label="投稿内容で絞り込み">
+        <span class="sub" id="rd-posts-count"></span>
+      </div>
+      <div id="rd-posts-list"></div>
+      <button class="iconbtn rank-more" id="rd-posts-more" type="button"></button>
+    </details>
+  </div>
+
+  <ul class="notes" id="notes"></ul>
+</div>
+
+<script>
+const D = /*__DATA__*/null;
+(function () {
+const $ = s => document.querySelector(s);
+function h(tag, cls, text, parent) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const fmt0 = n => Math.round(n).toLocaleString('ja-JP');
+const fmtDate = s => { const [y, m, d] = s.split('-'); return `${y}/${+m}/${+d}`; };
+const fmtStamp = s => { const [d, ...rest] = s.split(' '); return [fmtDate(d), ...rest].join(' '); };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const N = D.dates.length;
+const nTrips = D.meta.trips;
+const firstSeen = new Int32Array(nTrips).fill(-1);
+const lastSeen = new Int32Array(nTrips).fill(-1);
+for (let i = 0; i < N; i++) {
+  const p = D.tripDays[i];
+  for (let k = 0; k < p.length; k += 2) {
+    if (firstSeen[p[k]] < 0) firstSeen[p[k]] = i;
+    lastSeen[p[k]] = i;
+  }
+}
+// 期間 [a,b] 内の、重複を除いたトリップ数・トリップごとの登場日数/投稿数
+function tripStats(a, b) {
+  const days = new Int32Array(nTrips), posts = new Int32Array(nTrips);
+  let count = 0;
+  for (let i = a; i <= b; i++) {
+    const p = D.tripDays[i];
+    for (let k = 0; k < p.length; k += 2) {
+      if (days[p[k]]++ === 0) count++;
+      posts[p[k]] += p[k + 1];
+    }
+  }
+  return { count, days, posts };
+}
+
+/* ---------- 期間指定(プリセット + 開始/終了日) ---------- */
+const PRESETS = [['本日', 1], ['7日', 7], ['30日', 30], ['90日', 90]];
+let RK = { a: Math.max(0, N - 30), b: N - 1, q: '', limit: 20, sel: null };
+
+function rangeBar() {
+  const box = $('#presets'), from = $('#from'), to = $('#to');
+  const set = (a, b) => { if (a > b) [a, b] = [b, a]; apply(clamp(a, 0, N - 1), clamp(b, 0, N - 1)); };
+  for (const [label, n] of PRESETS) {
+    const btn = h('button', null, label, box);
+    btn.type = 'button'; btn.dataset.n = n;
+    btn.addEventListener('click', () => set(N - n, N - 1));
+  }
+  from.min = to.min = D.dates[0]; from.max = to.max = D.dates[N - 1];
+  const custom = () => {
+    const a = D.dates.indexOf(from.value), b = D.dates.indexOf(to.value);
+    if (a >= 0 && b >= 0) set(a, b);
+  };
+  from.addEventListener('change', custom); to.addEventListener('change', custom);
+  function apply(a, b) { RK.a = a; RK.b = b; RK.limit = 20; sync(); render(); }
+  function sync() {
+    from.value = D.dates[RK.a]; to.value = D.dates[RK.b];
+    box.querySelectorAll('button').forEach(btn => {
+      const n = +btn.dataset.n;
+      btn.setAttribute('aria-pressed', String(RK.b === N - 1 && RK.b - RK.a + 1 === Math.min(n, N)));
+    });
+  }
+  sync();
+  return apply;
+}
+const setRange = rangeBar();
+
+$('#daypick').min = D.dates[0]; $('#daypick').max = D.dates[N - 1];
+$('#daypick').addEventListener('change', e => {
+  const idx = D.dates.indexOf(e.target.value);
+  if (idx >= 0) setRange(idx, idx);
+});
+
+/* ---------- KPI(期間内のユニークトリップ数・新規スレッド数) ---------- */
+function renderKpis() {
+  const st = tripStats(RK.a, RK.b);
+  let threads = 0;
+  for (let i = RK.a; i <= RK.b; i++) threads += D.threads[i];
+  $('#k1-value').textContent = fmt0(st.count);
+  $('#k2-value').textContent = fmt0(threads);
+  const days = RK.b - RK.a + 1;
+  $('#period').textContent = days === 1
+    ? `${fmtDate(D.dates[RK.a])}(1日間)`
+    : `${fmtDate(D.dates[RK.a])} – ${fmtDate(D.dates[RK.b])}（${days}日間）`;
+}
+
+/* ---------- トリップ一覧(期間内の投稿数順) ---------- */
+function render() {
+  renderKpis();
+  const st = tripStats(RK.a, RK.b);
+  let list = [];
+  for (let t = 0; t < nTrips; t++) {
+    if (!st.days[t]) continue;
+    list.push({ t, name: D.tripNames[t], posts: st.posts[t], days: st.days[t] });
+  }
+  list.sort((p, q) => q.posts - p.posts || p.t - q.t);
+  list.forEach((r, i) => { r.rank = i + 1; });
+  const q = RK.q.trim().toLowerCase();
+  const filtered = q ? list.filter(r => r.name.toLowerCase().includes(q)) : list;
+  $('#rank-count').textContent = `${fmt0(filtered.length)}件${q ? '（検索結果）' : ''}`;
+
+  const thead = $('#rank-table thead'), tbody = $('#rank-table tbody');
+  thead.textContent = ''; tbody.textContent = '';
+  const tr = h('tr', null, null, thead);
+  ['順位', 'トリップ', '投稿数', '登場日数', '初登場', '最終登場'].forEach((label, i) =>
+    h('th', i === 1 ? 'l' : '', label, tr));
+  for (const r of filtered.slice(0, RK.limit)) {
+    const row = h('tr', RK.sel === r.t ? 'sel' : '', null, tbody);
+    row.tabIndex = 0;
+    [r.rank, r.name, fmt0(r.posts), fmt0(r.days), fmtDate(D.dates[firstSeen[r.t]]), fmtDate(D.dates[lastSeen[r.t]])]
+      .forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
+    const pick = () => selectTrip(r.t);
+    row.addEventListener('click', pick);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+  }
+  const more = $('#rank-more');
+  more.hidden = filtered.length <= RK.limit;
+  more.textContent = `さらに20件表示（残り ${fmt0(filtered.length - RK.limit)}件）`;
+
+  renderDetail();
+}
+
+function selectTrip(t) { RK.sel = t; render(); $('#rank-detail').scrollIntoView({ block: 'nearest' }); }
+function selectTripByName(name) {
+  const t = D.tripNames.indexOf(name);
+  if (t >= 0) selectTrip(t);
+  return t >= 0;
+}
+
+function renderDetail() {
+  const det = $('#rank-detail');
+  if (RK.sel == null) { det.hidden = true; return; }
+  det.hidden = false;
+  const t = RK.sel, st = tripStats(RK.a, RK.b);
+  $('#rd-name').textContent = D.tripNames[t];
+  $('#rd-meta').textContent = `期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
+  renderTripPosts(D.tripNames[t]);
+}
+
+/* ---------- この人の投稿(直近の本文は trip_posts.json を選択時に遅延取得) ---------- */
+const RP = { data: null, loading: false, trip: null, q: '', limit: 20 };
+function ensureTripPosts() {
+  if (RP.data || RP.loading) return RP.loading || Promise.resolve(RP.data);
+  RP.loading = fetch('trip_posts.json', { cache: 'no-store' })
+    .then(res => res.ok ? res.json() : {})
+    .catch(() => ({}))
+    .then(json => { RP.data = json; RP.loading = null; return json; });
+  return RP.loading;
+}
+function renderTripPosts(tripName) {
+  if (RP.trip !== tripName) {
+    RP.trip = tripName; RP.q = ''; RP.limit = 20;
+    const q = $('#rd-posts-q'); if (q) q.value = '';
+  }
+  const listEl = $('#rd-posts-list'), countEl = $('#rd-posts-count'), moreBtn = $('#rd-posts-more');
+  if (!RP.data) {
+    listEl.textContent = ''; countEl.textContent = '読み込み中…'; moreBtn.hidden = true;
+    ensureTripPosts().then(() => {
+      if (RK.sel != null && D.tripNames[RK.sel] === tripName) renderTripPosts(tripName);
+    });
+    return;
+  }
+  const posts = RP.data[tripName] || [];
+  const q = RP.q.trim();
+  const filtered = q ? posts.filter(p => (p.body || '').includes(q)) : posts;
+  countEl.textContent = posts.length
+    ? `${fmt0(filtered.length)}件${q ? `（絞り込み結果 / 全${fmt0(posts.length)}件）` : ''}`
+    : '該当する投稿はありません(保持期間外か、トリップ付き投稿が無い可能性があります)';
+  listEl.textContent = '';
+  for (const p of filtered.slice(0, RP.limit)) {
+    const item = h('div', 'rd-post', null, listEl);
+    const meta = h('div', 'rd-post-meta', null, item);
+    h('span', null, `${fmtDate(p.date)} ${p.time || ''}`.trim(), meta);
+    h('span', null, `スレ${p.thread_id} #${p.no}`, meta);
+    h('div', 'rd-post-body', p.body || '', item);
+  }
+  moreBtn.hidden = filtered.length <= RP.limit;
+  moreBtn.textContent = `さらに20件表示（残り ${fmt0(filtered.length - RP.limit)}件）`;
+}
+
+/* ---------- 起動時の配線 ---------- */
+$('#rank-q').addEventListener('input', e => { RK.q = e.target.value; RK.limit = 20; render(); });
+$('#rank-q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim();
+  if (v && selectTripByName(v)) e.preventDefault();
+});
+$('#rank-more').addEventListener('click', () => { RK.limit += 20; render(); });
+$('#rd-close').addEventListener('click', () => { RK.sel = null; render(); });
+$('#rd-posts-q').addEventListener('input', e => { RP.q = e.target.value; RP.limit = 20; if (RP.trip) renderTripPosts(RP.trip); });
+$('#rd-posts-more').addEventListener('click', () => { RP.limit += 20; if (RP.trip) renderTripPosts(RP.trip); });
+
+const notes = $('#notes');
+[
+  'ユニークトリップ数は、指定した期間内に1回以上投稿したトリップの重複無しの数です(日別の値の合計ではありません)。',
+  D.meta.partial ? `${fmtDate(D.meta.last)} は集計途中の可能性があります。` : null,
+  `データ更新: ${fmtStamp(D.meta.updated || D.meta.generated)} / ページ生成: ${fmtStamp(D.meta.generated)}`
+].filter(Boolean).forEach(t => h('li', null, t, notes));
+
+const root = document.documentElement;
+let saved = null;
+try { saved = localStorage.getItem('theme'); } catch (e) {}
+root.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+$('#theme').addEventListener('click', () => {
+  const t = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  root.dataset.theme = t;
+  try { localStorage.setItem('theme', t); } catch (e) {}
+});
+
+render();
+const params = new URLSearchParams(location.search);
+const initialTrip = params.get('trip');
+if (initialTrip) selectTripByName(initialTrip);
+})();
+</script>
+</body>
+</html>

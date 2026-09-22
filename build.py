@@ -1,19 +1,22 @@
-"""CSV -> dashboard.html builder.
+"""CSV -> dashboard.html / trip-search.html builder.
 
 data/all_daily_stats.csv / data/all_trip_daily_stats.csv(無ければ直下の同名ファイル)を集計して
-template.html に埋め込み、単体で開ける HTML を出力する。データを更新したら再実行するだけ。
+template.html に埋め込み、単体で開ける dashboard.html(投稿アクティビティ)を出力する。
+あわせて、trip_template.html に埋め込んで trip-search.html(トリップ検索。期間内の
+ユニークトリップ数・新規スレッド数と、トリップ別の投稿検索)を同じフォルダに出力する。
+データを更新したら再実行するだけ。
 入力の all_* は fetch_shitaraba_archive_stats.py の出力(過去ログ + 現行スレッドの合算)。
 all_* が無い場合だけ、旧形式の daily_stats.csv / trip_daily_stats.csv(現行スレッドのみ)を使う。
 
 あわせて、data/cache/anime_11224/recent_posts.jsonl (トリップ検索機能用、直近の投稿本文の
-キャッシュ)から trip_posts.json を出力先と同じフォルダに書き出す。ページ側はトリップを
+キャッシュ)から trip_posts.json を出力先と同じフォルダに書き出す。trip-search.html はトリップを
 選んだときだけこのファイルを読み込む(常に埋め込むと初期表示が重くなるため)。
 recent_posts.jsonl が無い場合はエラーにせず、0件として trip_posts.json を出力する。
 
-    python build.py                       # dashboard.html を出力(最新日も含める)
-    python build.py --out _site/index.html   # 出力先を指定(GitHub Pages 用)
+    python build.py                       # dashboard.html / trip-search.html を出力(最新日も含める)
+    python build.py --out _site/index.html   # 出力先を指定(GitHub Pages 用。trip-search.html も同じフォルダに出力)
     python build.py --exclude-today       # 当日(集計途中の可能性)を除外
-    python build.py --no-trips            # トリップ文字列・投稿本文を出力に含めない(ランキングも非表示)
+    python build.py --no-trips            # トリップ関連(ランキング・trip-search.html・投稿本文)を一切出力しない
 
 CSV が壊れている(列不足・数値以外・日付の欠損など)場合はエラー終了し、出力ファイルは更新しない。
 """
@@ -140,10 +143,11 @@ def main():
     ap.add_argument("--recent-posts", type=Path, default=default_recent_posts(),
                      help="トリップ検索用の直近投稿キャッシュ(recent_posts.jsonl)")
     ap.add_argument("--template", type=Path, default=ROOT / "template.html")
+    ap.add_argument("--trip-template", type=Path, default=ROOT / "trip_template.html")
     ap.add_argument("--out", type=Path, default=ROOT / "dashboard.html")
     ap.add_argument("--exclude-today", action="store_true", help="今日の日付(集計途中の可能性)を除外する")
     ap.add_argument("--no-trips", action="store_true",
-                     help="トリップ文字列・投稿本文を出力に含めない(ランキングも投稿検索も非表示)")
+                     help="トリップ関連(ランキング・trip-search.html・投稿本文)を一切出力しない")
     args = ap.parse_args()
 
     now = dt.datetime.now(JST)
@@ -235,10 +239,12 @@ def main():
         print("   トリップ文字列は含めていません")
 
     trip_posts_path = args.out.parent / "trip_posts.json"
+    trip_search_path = args.out.parent / "trip-search.html"
     if args.no_trips:
-        if trip_posts_path.exists():
-            trip_posts_path.unlink()
-        print("   投稿本文(trip_posts.json)も出力しません(--no-trips)")
+        for p in (trip_posts_path, trip_search_path):
+            if p.exists():
+                p.unlink()
+        print("   投稿本文(trip_posts.json)・トリップ検索ページ(trip-search.html)も出力しません(--no-trips)")
     else:
         by_trip, threads_read = build_trip_posts(args.recent_posts)
         trip_posts_payload = json.dumps(by_trip, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -249,6 +255,27 @@ def main():
         if not args.recent_posts.exists():
             print(f"   [注意] {args.recent_posts} が見つからないため0件で出力しました。"
                   f"backfill-recent-posts、または update を実行すると作られます。")
+
+        trip_data = {
+            "meta": {
+                "generated": data["meta"]["generated"],
+                "updated": data["meta"]["updated"],
+                "first": dates[0],
+                "last": dates[-1],
+                "partial": partial,
+                "trips": len(trip_ids),
+            },
+            "dates": dates,
+            "tripNames": list(trip_ids),
+            "tripDays": trip_days,
+            "threads": [r["new_thread_count"] for r in daily],
+        }
+        trip_html = args.trip_template.read_text(encoding="utf-8")
+        if PLACEHOLDER not in trip_html:
+            fail("trip_template.html にデータ埋め込み位置がありません。")
+        trip_payload = json.dumps(trip_data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        trip_search_path.write_text(trip_html.replace(PLACEHOLDER, trip_payload), encoding="utf-8")
+        print(f"OK {trip_search_path}: {trip_search_path.stat().st_size/1024:.0f}KB")
 
 
 if __name__ == "__main__":
