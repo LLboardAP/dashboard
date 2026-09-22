@@ -167,6 +167,9 @@ table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-nu
 th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; }
 thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; }
+#tbl tbody tr { cursor: pointer; scroll-margin: 60px; }
+#tbl tbody tr:hover, #tbl tbody tr.hi { background: var(--hover); }
+#tbl tbody tr.hi { outline: 2px solid var(--s1); outline-offset: -2px; }
 
 /* ranking */
 .rank-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
@@ -266,8 +269,16 @@ input[type="search"] {
     <div class="heat-legend" id="heat-legend"></div>
   </section>
 
+  <div class="filters" style="margin-bottom:16px" role="group" aria-label="日付を指定して表示">
+    <label class="sub" for="tbl-jump">日付で表示</label>
+    <input type="date" id="tbl-jump" aria-label="表示する日付">
+    <button class="iconbtn" id="tbl-prev" type="button">◀ 前日</button>
+    <button class="iconbtn" id="tbl-next" type="button">翌日 ▶</button>
+  </div>
+
   <details class="card" id="tbl" style="margin-bottom:16px">
     <summary>日別データをテーブルで表示</summary>
+    <div class="cap" style="margin-top:6px">上の日付指定、または行のクリックで、その日をハイライトして表示します</div>
     <div class="tablewrap"><table><thead></thead><tbody></tbody></table></div>
   </details>
 
@@ -894,6 +905,8 @@ function renderRank() {
   yrSync('trip', timeChart($('#ch-trip'), { x: D.dates.slice(a, b + 1), series: [{ name: '投稿数', vals: s, color: 'var(--s2)', type: 'bar' }], yMin: 0, height: 180, label: `トリップ ${D.tripNames[t]} の日別投稿数`, yr: YR.trip }));
 }
 
+/* ---------- 日別テーブル: 日付を指定してすぐ見つける ---------- */
+const TBL = { sel: D.dates[N - 1] };
 function renderTable(a, b) {
   const thead = $('#tbl thead'), tbody = $('#tbl tbody');
   thead.textContent = ''; tbody.textContent = '';
@@ -901,10 +914,30 @@ function renderTable(a, b) {
   const tr = h('tr', null, null, thead);
   cols.forEach(c => h('th', null, c, tr));
   for (let i = b; i >= a; i--) {
-    const r = h('tr', null, null, tbody);
+    const r = h('tr', TBL.sel === D.dates[i] ? 'hi' : '', null, tbody);
+    r.id = 'day-' + D.dates[i];
+    r.tabIndex = 0;
     [fmtDateW(D.dates[i]), fmt0(D.posts[i]), fmt0(D.tripped[i]), rate[i].toFixed(1) + '%', fmt0(D.uniqueTrips[i]),
       w7[i] == null ? '—' : fmt0(w7[i]), fmt0(D.threads[i])].forEach(v => h('td', null, v, r));
+    const pick = () => selectDay(D.dates[i]);
+    r.addEventListener('click', pick);
+    r.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
   }
+}
+// 指定した日を選び、テーブルを開いてその行が見えるようにする。上部の期間外の日なら、
+// 同じ長さの期間をその日が中心になるようずらす(期間そのものが動くのは表内クリックのときも含め想定内)
+function selectDay(dateStr) {
+  TBL.sel = dateStr;
+  $('#tbl-jump').value = dateStr;
+  const idx = D.dates.indexOf(dateStr);
+  const inRange = idx >= R.a && idx <= R.b;
+  if (inRange) renderTable(R.a, R.b);
+  else {
+    const width = R.b - R.a + 1, newA = clamp(idx - Math.floor(width / 2), 0, Math.max(0, N - width));
+    setRange(newA, Math.min(N - 1, newA + width - 1));
+  }
+  $('#tbl').open = true;
+  requestAnimationFrame(() => { const row = document.getElementById('day-' + dateStr); if (row) row.scrollIntoView({ block: 'center' }); });
 }
 
 /* ---------- 初期化 ---------- */
@@ -967,6 +1000,11 @@ function setRange(a, b) { R = { a, b }; syncMain(); render(); }
 
   // 折りたたみ中は幅が0で描画されるため、開いたときに描き直す
   $('#rank-card').addEventListener('toggle', () => { if ($('#rank-card').open) renderRank(); });
+  $('#tbl-jump').min = D.dates[0]; $('#tbl-jump').max = D.dates[N - 1]; $('#tbl-jump').value = TBL.sel;
+  $('#tbl-jump').addEventListener('change', e => { if (e.target.value) selectDay(e.target.value); });
+  $('#tbl-prev').addEventListener('click', () => { const i = D.dates.indexOf(TBL.sel); if (i > 0) selectDay(D.dates[i - 1]); });
+  $('#tbl-next').addEventListener('click', () => { const i = D.dates.indexOf(TBL.sel); if (i >= 0 && i < N - 1) selectDay(D.dates[i + 1]); });
+
   $('#rank-q').addEventListener('input', e => { RK.q = e.target.value; RK.limit = 20; renderRank(); });
   $('#rank-more').addEventListener('click', () => { RK.limit += 20; renderRank(); });
   $('#rd-close').addEventListener('click', () => { RK.sel = null; renderRank(); });
