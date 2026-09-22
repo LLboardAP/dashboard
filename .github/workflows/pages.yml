@@ -7,6 +7,7 @@ on:
     paths:
       - build.py
       - template.html
+      - trip_template.html
       - .gitmodules
       - data
       - .github/workflows/pages.yml
