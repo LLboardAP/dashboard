@@ -181,18 +181,18 @@ a.rd-post-thread:hover { text-decoration: underline; }
       <span class="sub" id="rd-share-msg"></span>
     </div>
     <div class="range-badge" id="pd-period" style="margin-bottom:6px"></div>
-    <div class="filters" style="margin:2px 0 10px" role="group" aria-label="このトリップを追いかける期間">
-      <label class="sub" style="margin:0">追いかける期間</label>
+    <div class="filters" style="margin:2px 0 10px" role="group" aria-label="このトリップの対象範囲">
+      <label class="sub" style="margin:0">対象範囲</label>
       <div class="seg" id="pd-presets"></div>
       <div class="range">
-        <input type="date" id="pd-from" aria-label="追いかける期間の開始日"> – <input type="date" id="pd-to" aria-label="追いかける期間の終了日">
+        <input type="date" id="pd-from" aria-label="対象範囲の開始日"> – <input type="date" id="pd-to" aria-label="対象範囲の終了日">
       </div>
       <button class="iconbtn" id="pd-prev" type="button">◀ 前日</button>
       <button class="iconbtn" id="pd-next" type="button">翌日 ▶</button>
     </div>
     <details class="card rd-posts" id="rd-posts-card" open style="margin-bottom:0">
-      <summary>このトリップの投稿</summary>
-      <div class="cap" style="margin-top:6px">上の「追いかける期間」内の投稿本文です(保持期間より前の投稿は表示されません)</div>
+      <summary>このトリップのレス</summary>
+      <div class="cap" style="margin-top:6px">上の「対象範囲」内の投稿本文です(保持期間より前の投稿は表示されません)</div>
       <div class="rank-tools">
         <input type="search" id="rd-posts-q" placeholder="投稿内容で絞り込み" aria-label="投稿内容で絞り込み">
         <span class="sub" id="rd-posts-count"></span>
@@ -368,7 +368,7 @@ function render() {
 
 function selectTrip(t) {
   if (RK.sel !== t) {
-    // 別のトリップに切り替えたら、追いかける期間はいったん既定(本日)に戻し、
+    // 別のトリップに切り替えたら、対象範囲はいったん既定(本日)に戻し、
     // 前のトリップの共有URL表示も隠す
     PD = { a: N - 1, b: N - 1 };
     syncPD();
@@ -423,7 +423,7 @@ function renderTripPosts(tripName) {
     return;
   }
   const all = RP.data.posts[tripName] || [];
-  // 「追いかける期間」に、投稿一覧の表示もあわせる(上部のトリップ検索の期間とは独立)
+  // 「対象範囲」に、投稿一覧の表示もあわせる(上部のトリップ検索の期間とは独立)
   const lo = D.dates[PD.a], hi = D.dates[PD.b];
   const inRange = all.filter(p => p.date >= lo && p.date <= hi);
   const q = RP.q.trim();
