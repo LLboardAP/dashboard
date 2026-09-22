@@ -70,25 +70,36 @@ def default_archive_index():
 
 
 TITLE_COUNT_SUFFIX_RE = re.compile(r"\(\d+\)\s*$")
+BOARD_CATEGORY, BOARD_ID = "anime", "11224"
 
 
-def load_archive_titles(path: Path):
-    """archive_index.json から {thread_id: タイトル} を作る(末尾の "(件数)" は除く)。
-    トリップ検索用の recent_posts.jsonl 自体にタイトルが無い古いレコード(導入前に
-    取得済みだった過去ログ)のフォールバックとして使う。読めない場合は空の dict。"""
+def load_archive_info(path: Path):
+    """archive_index.json から (タイトルのフォールバック dict, 過去ログ入り済みのスレッドID集合) を作る。
+    タイトルは末尾の "(件数)" を除く。トリップ検索用の recent_posts.jsonl 自体にタイトルが無い
+    古いレコード(導入前に取得済みだった過去ログ)のフォールバックに使う。
+    スレッドID集合は、投稿へのリンクを read.cgi(現行) / read_archive.cgi(過去ログ) の
+    どちらにするか判定するために使う。読めない場合はどちらも空。"""
     if not path.exists():
-        return {}
+        return {}, set()
     try:
         with path.open(encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError:
-        return {}
+        return {}, set()
     titles = {}
+    ids = set()
     for it in data.get("threads", ()):
+        ids.add(it["thread_id"])
         title = it.get("title")
         if title:
             titles[it["thread_id"]] = TITLE_COUNT_SUFFIX_RE.sub("", title).strip()
-    return titles
+    return titles, ids
+
+
+def thread_url(thread_id: str, archived_ids: set):
+    """スレッドの元ページのURL。過去ログ入り済みなら read_archive.cgi、そうでなければ read.cgi。"""
+    cgi = "read_archive.cgi" if thread_id in archived_ids else "read.cgi"
+    return f"https://jbbs.shitaraba.net/bbs/{cgi}/{BOARD_CATEGORY}/{BOARD_ID}/{thread_id}/"
 
 
 def data_updated(path, fallback):
@@ -135,13 +146,13 @@ def to_date(s, path, line):
         fail(f"{path.name} {line}行目: 日付が YYYY-MM-DD 形式ではありません ({s!r})")
 
 
-def build_trip_posts(path: Path, archive_titles: dict):
+def build_trip_posts(path: Path, archive_titles: dict, archived_ids: set):
     """recent_posts.jsonl(スレッド単位)から、トリップ別の投稿一覧(新しい順)と、
-    スレッドID→タイトルの対応表を作る。タイトルは各スレッドの記録に無ければ
-    archive_titles(archive_index.json 由来)で補う。
+    スレッドID→{タイトル,元スレッドへのURL} の対応表を作る。タイトルは各スレッドの
+    記録に無ければ archive_titles(archive_index.json 由来)で補う。
     ファイルが無い/読めない場合はエラーにせず、0件として扱う
     (機能導入直後や backfill 未実行の環境でもビルド自体は止めないため)。
-    戻り値は (トリップ文字列 -> 投稿リスト の dict, スレッドID→タイトル の dict, 読み込んだスレッド数)。"""
+    戻り値は (トリップ文字列 -> 投稿リスト の dict, スレッドID→{title,url} の dict, 読み込んだスレッド数)。"""
     by_trip = {}
     titles = {}
     threads = 0
@@ -159,8 +170,7 @@ def build_trip_posts(path: Path, archive_titles: dict):
             threads += 1
             tid = rec.get("thread_id")
             title = rec.get("title") or archive_titles.get(tid)
-            if title:
-                titles[tid] = title
+            titles[tid] = {"title": title, "url": thread_url(tid, archived_ids)}
             for p in rec.get("posts", ()):
                 trip = p.get("trip")
                 if not trip:
@@ -286,8 +296,8 @@ def main():
                 p.unlink()
         print("   投稿本文(trip_posts.json)・トリップ検索ページ(trip-search.html)も出力しません(--no-trips)")
     else:
-        archive_titles = load_archive_titles(args.archive_index)
-        by_trip, titles, threads_read = build_trip_posts(args.recent_posts, archive_titles)
+        archive_titles, archived_ids = load_archive_info(args.archive_index)
+        by_trip, titles, threads_read = build_trip_posts(args.recent_posts, archive_titles, archived_ids)
         trip_posts_payload = json.dumps({"posts": by_trip, "titles": titles},
                                          ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
         trip_posts_path.write_text(trip_posts_payload, encoding="utf-8")

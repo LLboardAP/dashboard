@@ -101,8 +101,10 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 .rd-posts summary { cursor: pointer; }
 .rd-post { border-bottom: 1px solid var(--border); padding: 8px 0; }
 .rd-post:last-child { border-bottom: none; }
-.rd-post-head { font-size: 12px; color: var(--ink2); margin-bottom: 2px; font-family: ui-monospace, Consolas, monospace; }
-.rd-post-thread { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.rd-post-thread { display: inline-block; font-size: 13px; font-weight: 650; margin-bottom: 2px; }
+a.rd-post-thread { color: var(--s1); text-decoration: none; }
+a.rd-post-thread:hover { text-decoration: underline; }
+.rd-post-head { font-size: 12px; color: var(--ink2); margin-bottom: 4px; font-family: ui-monospace, Consolas, monospace; }
 .rd-post-body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; }
 
 .notes { color: var(--ink2); font-size: 12px; margin-top: 20px; }
@@ -160,9 +162,16 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
       <b id="rd-name"></b><span class="sub" id="rd-meta"></span>
       <button class="iconbtn" id="rd-close" type="button">閉じる</button>
     </div>
+    <div class="filters" style="margin:2px 0 10px" role="group" aria-label="このトリップを追いかける期間">
+      <label class="sub" style="margin:0">追いかける期間</label>
+      <div class="seg" id="pd-presets"></div>
+      <div class="range">
+        <input type="date" id="pd-from" aria-label="追いかける期間の開始日"> – <input type="date" id="pd-to" aria-label="追いかける期間の終了日">
+      </div>
+    </div>
     <details class="card rd-posts" id="rd-posts-card" open style="margin-bottom:0">
       <summary>この人の投稿</summary>
-      <div class="cap" style="margin-top:6px">上部で指定した期間内の投稿本文です(保持期間より前の投稿は表示されません)</div>
+      <div class="cap" style="margin-top:6px">上の「追いかける期間」内の投稿本文です(保持期間より前の投稿は表示されません)</div>
       <div class="rank-tools">
         <input type="search" id="rd-posts-q" placeholder="投稿内容で絞り込み" aria-label="投稿内容で絞り込み">
         <span class="sub" id="rd-posts-count"></span>
@@ -216,12 +225,14 @@ function tripStats(a, b) {
   return { count, days, posts };
 }
 
-/* ---------- 期間指定(プリセット + 開始/終了日) ---------- */
+/* ---------- 期間指定(プリセット + 開始/終了日)。上部の検索用と、選択中トリップを
+   追いかける範囲用とで、同じ部品を独立に2つ使う ---------- */
 const PRESETS = [['本日', 1], ['7日', 7], ['30日', 30], ['90日', 90]];
 let RK = { a: Math.max(0, N - 30), b: N - 1, q: '', limit: 20, sel: null };
+let PD = { a: Math.max(0, N - 90), b: N - 1 };
 
-function rangeBar() {
-  const box = $('#presets'), from = $('#from'), to = $('#to');
+function rangeBar(ids, get, apply) {
+  const box = $(ids.presets), from = $(ids.from), to = $(ids.to);
   const set = (a, b) => { if (a > b) [a, b] = [b, a]; apply(clamp(a, 0, N - 1), clamp(b, 0, N - 1)); };
   for (const [label, n] of PRESETS) {
     const btn = h('button', null, label, box);
@@ -234,18 +245,23 @@ function rangeBar() {
     if (a >= 0 && b >= 0) set(a, b);
   };
   from.addEventListener('change', custom); to.addEventListener('change', custom);
-  function apply(a, b) { RK.a = a; RK.b = b; RK.limit = 20; sync(); render(); }
-  function sync() {
-    from.value = D.dates[RK.a]; to.value = D.dates[RK.b];
+  return function sync() {
+    const { a, b } = get();
+    from.value = D.dates[a]; to.value = D.dates[b];
     box.querySelectorAll('button').forEach(btn => {
       const n = +btn.dataset.n;
-      btn.setAttribute('aria-pressed', String(RK.b === N - 1 && RK.b - RK.a + 1 === Math.min(n, N)));
+      btn.setAttribute('aria-pressed', String(b === N - 1 && b - a + 1 === Math.min(n, N)));
     });
-  }
-  sync();
-  return apply;
+  };
 }
-const setRange = rangeBar();
+const syncRK = rangeBar({ presets: '#presets', from: '#from', to: '#to' }, () => RK, (a, b) => setRange(a, b));
+function setRange(a, b) { RK.a = a; RK.b = b; RK.limit = 20; syncRK(); render(); }
+
+const syncPD = rangeBar({ presets: '#pd-presets', from: '#pd-from', to: '#pd-to' }, () => PD, (a, b) => setPdRange(a, b));
+function setPdRange(a, b) {
+  PD.a = a; PD.b = b; RP.limit = 20; syncPD();
+  if (RK.sel != null) renderTripPosts(D.tripNames[RK.sel]);
+}
 
 $('#daypick').min = D.dates[0]; $('#daypick').max = D.dates[N - 1];
 $('#daypick').addEventListener('change', e => {
@@ -302,7 +318,15 @@ function render() {
   renderDetail();
 }
 
-function selectTrip(t) { RK.sel = t; render(); $('#rank-detail').scrollIntoView({ block: 'nearest' }); }
+function selectTrip(t) {
+  if (RK.sel !== t) {
+    // 別のトリップに切り替えたら、追いかける期間はいったん既定(90日)に戻す
+    PD = { a: Math.max(0, N - 90), b: N - 1 };
+    syncPD();
+  }
+  RK.sel = t;
+  render();
+}
 function selectTripByName(name) {
   const t = D.tripNames.indexOf(name);
   if (t >= 0) selectTrip(t);
@@ -313,9 +337,9 @@ function renderDetail() {
   const det = $('#rank-detail');
   if (RK.sel == null) { det.hidden = true; return; }
   det.hidden = false;
-  const t = RK.sel, st = tripStats(RK.a, RK.b);
+  const t = RK.sel, st = tripStats(PD.a, PD.b);
   $('#rd-name').textContent = D.tripNames[t];
-  $('#rd-meta').textContent = `期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
+  $('#rd-meta').textContent = `追いかける期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
   renderTripPosts(D.tripNames[t]);
 }
 
@@ -345,8 +369,8 @@ function renderTripPosts(tripName) {
     return;
   }
   const all = RP.data.posts[tripName] || [];
-  // 上部で指定した期間(本日/7日/30日/90日/指定範囲)に、投稿一覧の表示もあわせる
-  const lo = D.dates[RK.a], hi = D.dates[RK.b];
+  // 「追いかける期間」に、投稿一覧の表示もあわせる(上部のトリップ検索の期間とは独立)
+  const lo = D.dates[PD.a], hi = D.dates[PD.b];
   const inRange = all.filter(p => p.date >= lo && p.date <= hi);
   const q = RP.q.trim();
   const filtered = q ? inRange.filter(p => (p.body || '').includes(q)) : inRange;
@@ -356,10 +380,16 @@ function renderTripPosts(tripName) {
   listEl.textContent = '';
   for (const p of filtered.slice(0, RP.limit)) {
     const item = h('div', 'rd-post', null, listEl);
+    const info = RP.data.titles[p.thread_id] || {};
+    const label = info.title || `(スレ${p.thread_id})`;
+    if (info.url) {
+      const link = h('a', 'rd-post-thread', label, item);
+      link.href = info.url; link.target = '_blank'; link.rel = 'noopener noreferrer nofollow';
+    } else {
+      h('div', 'rd-post-thread', label, item);
+    }
     const head = h('div', 'rd-post-head', null, item);
     h('span', null, `${p.no}：${p.name || ''}：${fmtDate(p.date)}(${WD[dowOf(p.date)]}) ${p.time || ''}`.trim(), head);
-    const title = RP.data.titles[p.thread_id];
-    h('div', 'rd-post-thread', `書き込みスレッド: ${title ? title : `(スレ${p.thread_id})`}`, item);
     h('div', 'rd-post-body', p.body || '', item);
   }
   moreBtn.hidden = filtered.length <= RP.limit;
@@ -395,6 +425,8 @@ $('#theme').addEventListener('click', () => {
   try { localStorage.setItem('theme', t); } catch (e) {}
 });
 
+syncRK();
+syncPD();
 render();
 const params = new URLSearchParams(location.search);
 const initialTrip = params.get('trip');
