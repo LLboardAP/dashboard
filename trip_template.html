@@ -135,6 +135,8 @@ a.rd-post-thread:hover { text-decoration: underline; }
     <div class="range">
       <input type="date" id="from" aria-label="開始日"> – <input type="date" id="to" aria-label="終了日">
     </div>
+    <button class="iconbtn" id="day-prev" type="button">◀ 前日</button>
+    <button class="iconbtn" id="day-next" type="button">翌日 ▶</button>
   </div>
   <div class="filters" role="group" aria-label="日付を指定して見る">
     <label class="sub" for="daypick">カレンダーで1日だけ見る</label>
@@ -179,6 +181,8 @@ a.rd-post-thread:hover { text-decoration: underline; }
       <div class="range">
         <input type="date" id="pd-from" aria-label="追いかける期間の開始日"> – <input type="date" id="pd-to" aria-label="追いかける期間の終了日">
       </div>
+      <button class="iconbtn" id="pd-prev" type="button">◀ 前日</button>
+      <button class="iconbtn" id="pd-next" type="button">翌日 ▶</button>
     </div>
     <details class="card rd-posts" id="rd-posts-card" open style="margin-bottom:0">
       <summary>この人の投稿</summary>
@@ -239,8 +243,8 @@ function tripStats(a, b) {
 /* ---------- 期間指定(プリセット + 開始/終了日)。上部の検索用と、選択中トリップを
    追いかける範囲用とで、同じ部品を独立に2つ使う ---------- */
 const PRESETS = [['本日', 1], ['7日', 7], ['30日', 30], ['90日', 90]];
-let RK = { a: Math.max(0, N - 30), b: N - 1, q: '', limit: 20, sel: null };
-let PD = { a: Math.max(0, N - 90), b: N - 1 };
+let RK = { a: N - 1, b: N - 1, q: '', limit: 20, sel: null };
+let PD = { a: N - 1, b: N - 1 };
 
 function rangeBar(ids, get, apply) {
   const box = $(ids.presets), from = $(ids.from), to = $(ids.to);
@@ -279,6 +283,17 @@ $('#daypick').addEventListener('change', e => {
   const idx = D.dates.indexOf(e.target.value);
   if (idx >= 0) setRange(idx, idx);
 });
+
+// 前日/翌日: 選んでいる期間の幅を保ったまま、1日分ずらす(本日=1日幅なら1日ずつ移動)
+function shiftDay(get, apply, delta) {
+  const { a, b } = get(), width = b - a + 1;
+  const newA = clamp(a + delta, 0, N - width);
+  apply(newA, newA + width - 1);
+}
+$('#day-prev').addEventListener('click', () => shiftDay(() => RK, setRange, -1));
+$('#day-next').addEventListener('click', () => shiftDay(() => RK, setRange, 1));
+$('#pd-prev').addEventListener('click', () => shiftDay(() => PD, setPdRange, -1));
+$('#pd-next').addEventListener('click', () => shiftDay(() => PD, setPdRange, 1));
 
 /* ---------- KPI(期間内のユニークトリップ数・新規スレッド数) ---------- */
 function renderKpis() {
@@ -331,9 +346,9 @@ function render() {
 
 function selectTrip(t) {
   if (RK.sel !== t) {
-    // 別のトリップに切り替えたら、追いかける期間はいったん既定(90日)に戻し、
+    // 別のトリップに切り替えたら、追いかける期間はいったん既定(本日)に戻し、
     // 前のトリップの共有URL表示も隠す
-    PD = { a: Math.max(0, N - 90), b: N - 1 };
+    PD = { a: N - 1, b: N - 1 };
     syncPD();
     $('#rd-share-row').hidden = true;
   }
@@ -421,13 +436,11 @@ $('#rd-close').addEventListener('click', () => { RK.sel = null; render(); });
 $('#rd-posts-q').addEventListener('input', e => { RP.q = e.target.value; RP.limit = 20; if (RP.trip) renderTripPosts(RP.trip); });
 $('#rd-posts-more').addEventListener('click', () => { RP.limit += 20; if (RP.trip) renderTripPosts(RP.trip); });
 
-// 選択中のトリップを、追いかける期間つきで他の人と共有するためのURL
+// 選択中のトリップを他の人と共有するためのURL(期間は付けない。開いた側は既定の「本日」から見る)
 function buildShareUrl() {
   const url = new URL(location.href);
   url.search = '';
   url.searchParams.set('trip', D.tripNames[RK.sel]);
-  url.searchParams.set('from', D.dates[PD.a]);
-  url.searchParams.set('to', D.dates[PD.b]);
   return url.toString();
 }
 $('#rd-share').addEventListener('click', () => {
@@ -473,12 +486,7 @@ syncPD();
 render();
 const params = new URLSearchParams(location.search);
 const initialTrip = params.get('trip');
-if (initialTrip && selectTripByName(initialTrip)) {
-  // 共有URLの from/to があれば、既定(90日)の代わりにその範囲を追いかける期間にする
-  const a = D.dates.indexOf(params.get('from') || '');
-  const b = D.dates.indexOf(params.get('to') || '');
-  if (a >= 0 && b >= 0) setPdRange(a, b);
-}
+if (initialTrip) selectTripByName(initialTrip);
 })();
 </script>
 </body>
