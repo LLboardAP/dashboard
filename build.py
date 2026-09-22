@@ -24,6 +24,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,37 @@ def default_recent_posts():
         if (base / rel).exists():
             return base / rel
     return DATA_DIR / rel
+
+
+def default_archive_index():
+    """過去ログ索引(スレッドタイトルのフォールバック用)。data/ → ROOT の順に探す(無くてもエラーにしない)。"""
+    rel = Path("cache") / "anime_11224" / "archive_index.json"
+    for base in (DATA_DIR, ROOT):
+        if (base / rel).exists():
+            return base / rel
+    return DATA_DIR / rel
+
+
+TITLE_COUNT_SUFFIX_RE = re.compile(r"\(\d+\)\s*$")
+
+
+def load_archive_titles(path: Path):
+    """archive_index.json から {thread_id: タイトル} を作る(末尾の "(件数)" は除く)。
+    トリップ検索用の recent_posts.jsonl 自体にタイトルが無い古いレコード(導入前に
+    取得済みだった過去ログ)のフォールバックとして使う。読めない場合は空の dict。"""
+    if not path.exists():
+        return {}
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        return {}
+    titles = {}
+    for it in data.get("threads", ()):
+        title = it.get("title")
+        if title:
+            titles[it["thread_id"]] = TITLE_COUNT_SUFFIX_RE.sub("", title).strip()
+    return titles
 
 
 def data_updated(path, fallback):
@@ -103,15 +135,18 @@ def to_date(s, path, line):
         fail(f"{path.name} {line}行目: 日付が YYYY-MM-DD 形式ではありません ({s!r})")
 
 
-def build_trip_posts(path: Path):
-    """recent_posts.jsonl(スレッド単位)から、トリップ別の投稿一覧(新しい順)を作る。
+def build_trip_posts(path: Path, archive_titles: dict):
+    """recent_posts.jsonl(スレッド単位)から、トリップ別の投稿一覧(新しい順)と、
+    スレッドID→タイトルの対応表を作る。タイトルは各スレッドの記録に無ければ
+    archive_titles(archive_index.json 由来)で補う。
     ファイルが無い/読めない場合はエラーにせず、0件として扱う
     (機能導入直後や backfill 未実行の環境でもビルド自体は止めないため)。
-    戻り値は (トリップ文字列 -> 投稿リスト の dict, 読み込んだスレッド数)。"""
+    戻り値は (トリップ文字列 -> 投稿リスト の dict, スレッドID→タイトル の dict, 読み込んだスレッド数)。"""
     by_trip = {}
+    titles = {}
     threads = 0
     if not path.exists():
-        return by_trip, threads
+        return by_trip, titles, threads
     with path.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -123,17 +158,20 @@ def build_trip_posts(path: Path):
                 continue
             threads += 1
             tid = rec.get("thread_id")
+            title = rec.get("title") or archive_titles.get(tid)
+            if title:
+                titles[tid] = title
             for p in rec.get("posts", ()):
                 trip = p.get("trip")
                 if not trip:
                     continue
                 by_trip.setdefault(trip, []).append({
-                    "date": p.get("date"), "time": p.get("time"),
+                    "date": p.get("date"), "time": p.get("time"), "name": p.get("name"),
                     "thread_id": tid, "no": p.get("no"), "body": p.get("body"),
                 })
     for posts in by_trip.values():
         posts.sort(key=lambda p: (p["date"] or "", p["time"] or ""), reverse=True)
-    return by_trip, threads
+    return by_trip, titles, threads
 
 
 def main():
@@ -142,6 +180,8 @@ def main():
     ap.add_argument("--trips-csv", type=Path, default=default_csv("all_trip_daily_stats.csv", "trip_daily_stats.csv"))
     ap.add_argument("--recent-posts", type=Path, default=default_recent_posts(),
                      help="トリップ検索用の直近投稿キャッシュ(recent_posts.jsonl)")
+    ap.add_argument("--archive-index", type=Path, default=default_archive_index(),
+                     help="スレッドタイトルのフォールバック用(archive_index.json)")
     ap.add_argument("--template", type=Path, default=ROOT / "template.html")
     ap.add_argument("--trip-template", type=Path, default=ROOT / "trip_template.html")
     ap.add_argument("--out", type=Path, default=ROOT / "dashboard.html")
@@ -246,12 +286,14 @@ def main():
                 p.unlink()
         print("   投稿本文(trip_posts.json)・トリップ検索ページ(trip-search.html)も出力しません(--no-trips)")
     else:
-        by_trip, threads_read = build_trip_posts(args.recent_posts)
-        trip_posts_payload = json.dumps(by_trip, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        archive_titles = load_archive_titles(args.archive_index)
+        by_trip, titles, threads_read = build_trip_posts(args.recent_posts, archive_titles)
+        trip_posts_payload = json.dumps({"posts": by_trip, "titles": titles},
+                                         ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
         trip_posts_path.write_text(trip_posts_payload, encoding="utf-8")
         total_posts = sum(len(v) for v in by_trip.values())
         print(f"OK {trip_posts_path}: {len(by_trip)}トリップ, 投稿{total_posts}件, "
-              f"{trip_posts_path.stat().st_size/1024:.0f}KB (元スレッド{threads_read}件)")
+              f"スレッドタイトル{len(titles)}件, {trip_posts_path.stat().st_size/1024:.0f}KB (元スレッド{threads_read}件)")
         if not args.recent_posts.exists():
             print(f"   [注意] {args.recent_posts} が見つからないため0件で出力しました。"
                   f"backfill-recent-posts、または update を実行すると作られます。")

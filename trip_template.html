@@ -101,7 +101,8 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 .rd-posts summary { cursor: pointer; }
 .rd-post { border-bottom: 1px solid var(--border); padding: 8px 0; }
 .rd-post:last-child { border-bottom: none; }
-.rd-post-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.rd-post-head { font-size: 12px; color: var(--ink2); margin-bottom: 2px; font-family: ui-monospace, Consolas, monospace; }
+.rd-post-thread { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .rd-post-body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; }
 
 .notes { color: var(--ink2); font-size: 12px; margin-top: 20px; }
@@ -161,7 +162,7 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
     </div>
     <details class="card rd-posts" id="rd-posts-card" open style="margin-bottom:0">
       <summary>この人の投稿</summary>
-      <div class="cap" style="margin-top:6px">直近の投稿本文です。保持期間を過ぎた投稿は表示されません</div>
+      <div class="cap" style="margin-top:6px">上部で指定した期間内の投稿本文です(保持期間より前の投稿は表示されません)</div>
       <div class="rank-tools">
         <input type="search" id="rd-posts-q" placeholder="投稿内容で絞り込み" aria-label="投稿内容で絞り込み">
         <span class="sub" id="rd-posts-count"></span>
@@ -319,13 +320,15 @@ function renderDetail() {
 }
 
 /* ---------- この人の投稿(直近の本文は trip_posts.json を選択時に遅延取得) ---------- */
+const WD = ['月', '火', '水', '木', '金', '土', '日'];
+const dowOf = s => (new Date(s + 'T00:00:00Z').getUTCDay() + 6) % 7;
 const RP = { data: null, loading: false, trip: null, q: '', limit: 20 };
 function ensureTripPosts() {
   if (RP.data || RP.loading) return RP.loading || Promise.resolve(RP.data);
   RP.loading = fetch('trip_posts.json', { cache: 'no-store' })
     .then(res => res.ok ? res.json() : {})
     .catch(() => ({}))
-    .then(json => { RP.data = json; RP.loading = null; return json; });
+    .then(json => { RP.data = json.posts ? json : { posts: {}, titles: {} }; RP.loading = null; return RP.data; });
   return RP.loading;
 }
 function renderTripPosts(tripName) {
@@ -341,18 +344,22 @@ function renderTripPosts(tripName) {
     });
     return;
   }
-  const posts = RP.data[tripName] || [];
+  const all = RP.data.posts[tripName] || [];
+  // 上部で指定した期間(本日/7日/30日/90日/指定範囲)に、投稿一覧の表示もあわせる
+  const lo = D.dates[RK.a], hi = D.dates[RK.b];
+  const inRange = all.filter(p => p.date >= lo && p.date <= hi);
   const q = RP.q.trim();
-  const filtered = q ? posts.filter(p => (p.body || '').includes(q)) : posts;
-  countEl.textContent = posts.length
-    ? `${fmt0(filtered.length)}件${q ? `（絞り込み結果 / 全${fmt0(posts.length)}件）` : ''}`
-    : '該当する投稿はありません(保持期間外か、トリップ付き投稿が無い可能性があります)';
+  const filtered = q ? inRange.filter(p => (p.body || '').includes(q)) : inRange;
+  countEl.textContent = inRange.length
+    ? `${fmt0(filtered.length)}件${q ? `（絞り込み結果 / 期間内${fmt0(inRange.length)}件）` : ''}`
+    : `この期間の投稿はありません(全期間では${fmt0(all.length)}件。保持期間外の可能性もあります)`;
   listEl.textContent = '';
   for (const p of filtered.slice(0, RP.limit)) {
     const item = h('div', 'rd-post', null, listEl);
-    const meta = h('div', 'rd-post-meta', null, item);
-    h('span', null, `${fmtDate(p.date)} ${p.time || ''}`.trim(), meta);
-    h('span', null, `スレ${p.thread_id} #${p.no}`, meta);
+    const head = h('div', 'rd-post-head', null, item);
+    h('span', null, `${p.no}：${p.name || ''}：${fmtDate(p.date)}(${WD[dowOf(p.date)]}) ${p.time || ''}`.trim(), head);
+    const title = RP.data.titles[p.thread_id];
+    h('div', 'rd-post-thread', `書き込みスレッド: ${title ? title : `(スレ${p.thread_id})`}`, item);
     h('div', 'rd-post-body', p.body || '', item);
   }
   moreBtn.hidden = filtered.length <= RP.limit;
