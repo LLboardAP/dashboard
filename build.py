@@ -5,10 +5,15 @@ template.html に埋め込み、単体で開ける HTML を出力する。デー
 入力の all_* は fetch_shitaraba_archive_stats.py の出力(過去ログ + 現行スレッドの合算)。
 all_* が無い場合だけ、旧形式の daily_stats.csv / trip_daily_stats.csv(現行スレッドのみ)を使う。
 
+あわせて、data/cache/anime_11224/recent_posts.jsonl (トリップ検索機能用、直近の投稿本文の
+キャッシュ)から trip_posts.json を出力先と同じフォルダに書き出す。ページ側はトリップを
+選んだときだけこのファイルを読み込む(常に埋め込むと初期表示が重くなるため)。
+recent_posts.jsonl が無い場合はエラーにせず、0件として trip_posts.json を出力する。
+
     python build.py                       # dashboard.html を出力(最新日も含める)
     python build.py --out _site/index.html   # 出力先を指定(GitHub Pages 用)
     python build.py --exclude-today       # 当日(集計途中の可能性)を除外
-    python build.py --no-trips            # トリップ文字列を出力に含めない(ランキングも非表示)
+    python build.py --no-trips            # トリップ文字列・投稿本文を出力に含めない(ランキングも非表示)
 
 CSV が壊れている(列不足・数値以外・日付の欠損など)場合はエラー終了し、出力ファイルは更新しない。
 """
@@ -40,6 +45,15 @@ def default_csv(*names):
             if (base / name).exists():
                 return base / name
     return ROOT / names[0]
+
+
+def default_recent_posts():
+    """トリップ検索用の直近投稿キャッシュ。data/ → ROOT の順に探す(無くてもエラーにしない)。"""
+    rel = Path("cache") / "anime_11224" / "recent_posts.jsonl"
+    for base in (DATA_DIR, ROOT):
+        if (base / rel).exists():
+            return base / rel
+    return DATA_DIR / rel
 
 
 def data_updated(path, fallback):
@@ -86,14 +100,50 @@ def to_date(s, path, line):
         fail(f"{path.name} {line}行目: 日付が YYYY-MM-DD 形式ではありません ({s!r})")
 
 
+def build_trip_posts(path: Path):
+    """recent_posts.jsonl(スレッド単位)から、トリップ別の投稿一覧(新しい順)を作る。
+    ファイルが無い/読めない場合はエラーにせず、0件として扱う
+    (機能導入直後や backfill 未実行の環境でもビルド自体は止めないため)。
+    戻り値は (トリップ文字列 -> 投稿リスト の dict, 読み込んだスレッド数)。"""
+    by_trip = {}
+    threads = 0
+    if not path.exists():
+        return by_trip, threads
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            threads += 1
+            tid = rec.get("thread_id")
+            for p in rec.get("posts", ()):
+                trip = p.get("trip")
+                if not trip:
+                    continue
+                by_trip.setdefault(trip, []).append({
+                    "date": p.get("date"), "time": p.get("time"),
+                    "thread_id": tid, "no": p.get("no"), "body": p.get("body"),
+                })
+    for posts in by_trip.values():
+        posts.sort(key=lambda p: (p["date"] or "", p["time"] or ""), reverse=True)
+    return by_trip, threads
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--daily", type=Path, default=default_csv("all_daily_stats.csv", "daily_stats.csv"))
     ap.add_argument("--trips-csv", type=Path, default=default_csv("all_trip_daily_stats.csv", "trip_daily_stats.csv"))
+    ap.add_argument("--recent-posts", type=Path, default=default_recent_posts(),
+                     help="トリップ検索用の直近投稿キャッシュ(recent_posts.jsonl)")
     ap.add_argument("--template", type=Path, default=ROOT / "template.html")
     ap.add_argument("--out", type=Path, default=ROOT / "dashboard.html")
     ap.add_argument("--exclude-today", action="store_true", help="今日の日付(集計途中の可能性)を除外する")
-    ap.add_argument("--no-trips", action="store_true", help="トリップ文字列を出力に含めない(ランキングも非表示)")
+    ap.add_argument("--no-trips", action="store_true",
+                     help="トリップ文字列・投稿本文を出力に含めない(ランキングも投稿検索も非表示)")
     args = ap.parse_args()
 
     now = dt.datetime.now(JST)
@@ -183,6 +233,22 @@ def main():
         print(f"   {dates[-1]} は集計途中の可能性があります (--exclude-today で除外)")
     if args.no_trips:
         print("   トリップ文字列は含めていません")
+
+    trip_posts_path = args.out.parent / "trip_posts.json"
+    if args.no_trips:
+        if trip_posts_path.exists():
+            trip_posts_path.unlink()
+        print("   投稿本文(trip_posts.json)も出力しません(--no-trips)")
+    else:
+        by_trip, threads_read = build_trip_posts(args.recent_posts)
+        trip_posts_payload = json.dumps(by_trip, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        trip_posts_path.write_text(trip_posts_payload, encoding="utf-8")
+        total_posts = sum(len(v) for v in by_trip.values())
+        print(f"OK {trip_posts_path}: {len(by_trip)}トリップ, 投稿{total_posts}件, "
+              f"{trip_posts_path.stat().st_size/1024:.0f}KB (元スレッド{threads_read}件)")
+        if not args.recent_posts.exists():
+            print(f"   [注意] {args.recent_posts} が見つからないため0件で出力しました。"
+                  f"backfill-recent-posts、または update を実行すると作られます。")
 
 
 if __name__ == "__main__":

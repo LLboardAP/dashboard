@@ -196,6 +196,13 @@ input[type="search"] {
 .detail-h .iconbtn { margin-left: auto; padding: 2px 10px; }
 .rank-more { margin-top: 10px; }
 
+.rd-posts { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.rd-posts summary { cursor: pointer; }
+.rd-post { border-bottom: 1px solid var(--border); padding: 8px 0; }
+.rd-post:last-child { border-bottom: none; }
+.rd-post-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.rd-post-body { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; }
+
 .notes { color: var(--ink2); font-size: 12px; margin-top: 20px; }
 .notes li { margin: 2px 0; }
 
@@ -310,6 +317,17 @@ input[type="search"] {
       </div>
       <div class="yr" id="yr-trip"></div>
       <div class="chart-host" id="ch-trip"></div>
+
+      <details class="card rd-posts" id="rd-posts-card" style="margin-top:12px">
+        <summary>この人の投稿を見る</summary>
+        <div class="cap" style="margin-top:6px">直近の投稿本文です。保持期間を過ぎた投稿は表示されません</div>
+        <div class="rank-tools">
+          <input type="search" id="rd-posts-q" placeholder="投稿内容で絞り込み" aria-label="投稿内容で絞り込み">
+          <span class="sub" id="rd-posts-count"></span>
+        </div>
+        <div id="rd-posts-list"></div>
+        <button class="iconbtn rank-more" id="rd-posts-more" type="button"></button>
+      </details>
     </div>
     <div class="tablewrap" style="max-height:none;margin-top:0"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
     <button class="iconbtn rank-more" id="rank-more" type="button"></button>
@@ -960,6 +978,49 @@ function renderRank() {
   $('#rd-name').textContent = D.tripNames[t];
   $('#rd-meta').textContent = `期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
   yrSync('trip', timeChart($('#ch-trip'), { x: D.dates.slice(a, b + 1), series: [{ name: '投稿数', vals: s, color: 'var(--s2)', type: 'bar' }], yMin: 0, height: 180, label: `トリップ ${D.tripNames[t]} の日別投稿数`, yr: YR.trip }));
+  renderTripPosts(D.tripNames[t]);
+}
+
+/* ---------- トリップ別: この人の投稿を見る(投稿本文は trip_posts.json を選択時に遅延取得) ---------- */
+const RP = { data: null, loading: false, trip: null, q: '', limit: 20 };
+function ensureTripPosts() {
+  if (RP.data || RP.loading) return RP.loading || Promise.resolve(RP.data);
+  RP.loading = fetch('trip_posts.json', { cache: 'no-store' })
+    .then(res => res.ok ? res.json() : {})
+    .catch(() => ({}))
+    .then(json => { RP.data = json; RP.loading = null; return json; });
+  return RP.loading;
+}
+function renderTripPosts(tripName) {
+  if (RP.trip !== tripName) {
+    RP.trip = tripName; RP.q = ''; RP.limit = 20;
+    const q = $('#rd-posts-q'); if (q) q.value = '';
+  }
+  const listEl = $('#rd-posts-list'), countEl = $('#rd-posts-count'), moreBtn = $('#rd-posts-more');
+  if (!RP.data) {
+    listEl.textContent = ''; countEl.textContent = '読み込み中…'; moreBtn.hidden = true;
+    ensureTripPosts().then(() => {
+      // 取得中にトリップの選び直しが起きていたら、その描画に任せる
+      if (RK.sel != null && D.tripNames[RK.sel] === tripName) renderTripPosts(tripName);
+    });
+    return;
+  }
+  const posts = RP.data[tripName] || [];
+  const q = RP.q.trim();
+  const filtered = q ? posts.filter(p => (p.body || '').includes(q)) : posts;
+  countEl.textContent = posts.length
+    ? `${fmt0(filtered.length)}件${q ? `（絞り込み結果 / 全${fmt0(posts.length)}件）` : ''}`
+    : '該当する投稿はありません(保持期間外か、トリップ付き投稿が無い可能性があります)';
+  listEl.textContent = '';
+  for (const p of filtered.slice(0, RP.limit)) {
+    const item = h('div', 'rd-post', null, listEl);
+    const meta = h('div', 'rd-post-meta', null, item);
+    h('span', null, `${fmtDate(p.date)} ${p.time || ''}`.trim(), meta);
+    h('span', null, `スレ${p.thread_id} #${p.no}`, meta);
+    h('div', 'rd-post-body', p.body || '', item);
+  }
+  moreBtn.hidden = filtered.length <= RP.limit;
+  moreBtn.textContent = `さらに20件表示（残り ${fmt0(filtered.length - RP.limit)}件）`;
 }
 
 /* ---------- 日別テーブル: 日付を指定してすぐ見つける ---------- */
@@ -1068,6 +1129,8 @@ function shiftRangeForDay(a, b) { R = { a, b }; syncMain(); render(); }
   $('#rank-q').addEventListener('input', e => { RK.q = e.target.value; RK.limit = 20; renderRank(); });
   $('#rank-more').addEventListener('click', () => { RK.limit += 20; renderRank(); });
   $('#rd-close').addEventListener('click', () => { RK.sel = null; renderRank(); });
+  $('#rd-posts-q').addEventListener('input', e => { RP.q = e.target.value; RP.limit = 20; if (RP.trip) renderTripPosts(RP.trip); });
+  $('#rd-posts-more').addEventListener('click', () => { RP.limit += 20; if (RP.trip) renderTripPosts(RP.trip); });
 
   let raf = 0, lastW = 0;
   new ResizeObserver(() => {
