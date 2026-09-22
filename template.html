@@ -994,8 +994,6 @@ function selectDay(dateStr) {
     const width = R.b - R.a + 1, newA = clamp(idx - Math.floor(width / 2), 0, Math.max(0, N - width));
     shiftRangeForDay(newA, Math.min(N - 1, newA + width - 1));
   }
-  $('#tbl').open = true;
-  requestAnimationFrame(() => { const row = document.getElementById('day-' + dateStr); if (row) row.scrollIntoView({ block: 'center' }); });
 }
 function exitDayMode() { DAYMODE = null; render(); }
 
