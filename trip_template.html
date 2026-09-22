@@ -48,6 +48,11 @@ body {
 header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 h1 { font-size: 20px; margin: 0; font-weight: 650; }
 .sub { color: var(--ink2); font-size: 13px; margin-top: 2px; }
+.range-badge {
+  display: inline-block; font-size: 15px; font-weight: 700; color: var(--ink);
+  background: var(--hover); border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px 12px; margin-top: 2px;
+}
 button { font: inherit; color: inherit; }
 a { color: var(--s1); }
 .iconbtn {
@@ -122,7 +127,7 @@ a.rd-post-thread:hover { text-decoration: underline; }
   <header>
     <div>
       <h1>トリップ検索</h1>
-      <div class="sub" id="period"></div>
+      <div class="range-badge" id="period"></div>
     </div>
     <div class="hright">
       <a class="iconbtn" href="index.html">← ダッシュボードへ</a>
@@ -139,7 +144,7 @@ a.rd-post-thread:hover { text-decoration: underline; }
     <button class="iconbtn" id="day-next" type="button">翌日 ▶</button>
   </div>
   <div class="filters" role="group" aria-label="日付を指定して見る">
-    <label class="sub" for="daypick">カレンダーで1日だけ見る</label>
+    <label class="sub" for="daypick">日付で指定</label>
     <input type="date" id="daypick" aria-label="表示する日付">
   </div>
 
@@ -175,6 +180,7 @@ a.rd-post-thread:hover { text-decoration: underline; }
       <input type="text" id="rd-share-url" readonly aria-label="このトリップの共有URL">
       <span class="sub" id="rd-share-msg"></span>
     </div>
+    <div class="range-badge" id="pd-period" style="margin-bottom:6px"></div>
     <div class="filters" style="margin:2px 0 10px" role="group" aria-label="このトリップを追いかける期間">
       <label class="sub" style="margin:0">追いかける期間</label>
       <div class="seg" id="pd-presets"></div>
@@ -185,7 +191,7 @@ a.rd-post-thread:hover { text-decoration: underline; }
       <button class="iconbtn" id="pd-next" type="button">翌日 ▶</button>
     </div>
     <details class="card rd-posts" id="rd-posts-card" open style="margin-bottom:0">
-      <summary>この人の投稿</summary>
+      <summary>このトリップの投稿</summary>
       <div class="cap" style="margin-top:6px">上の「追いかける期間」内の投稿本文です(保持期間より前の投稿は表示されません)</div>
       <div class="rank-tools">
         <input type="search" id="rd-posts-q" placeholder="投稿内容で絞り込み" aria-label="投稿内容で絞り込み">
@@ -225,6 +231,17 @@ for (let i = 0; i < N; i++) {
     if (firstSeen[p[k]] < 0) firstSeen[p[k]] = i;
     lastSeen[p[k]] = i;
   }
+}
+// トリップ t が期間 [a,b] 内で最初/最後にレスした日(インデックス)。無ければ -1
+function tripRangeSeen(t, a, b) {
+  let first = -1, last = -1;
+  for (let i = a; i <= b; i++) {
+    const p = D.tripDays[i];
+    for (let k = 0; k < p.length; k += 2) {
+      if (p[k] === t) { if (first < 0) first = i; last = i; break; }
+    }
+  }
+  return { first, last };
 }
 // 期間 [a,b] 内の、重複を除いたトリップ数・トリップごとの登場日数/投稿数
 function tripStats(a, b) {
@@ -273,8 +290,13 @@ const syncRK = rangeBar({ presets: '#presets', from: '#from', to: '#to' }, () =>
 function setRange(a, b) { RK.a = a; RK.b = b; RK.limit = 20; syncRK(); render(); }
 
 const syncPD = rangeBar({ presets: '#pd-presets', from: '#pd-from', to: '#pd-to' }, () => PD, (a, b) => setPdRange(a, b));
+function pdLabel(a, b) {
+  const days = b - a + 1;
+  return days === 1 ? `${fmtDate(D.dates[a])}(1日間)` : `${fmtDate(D.dates[a])} – ${fmtDate(D.dates[b])}（${days}日間）`;
+}
 function setPdRange(a, b) {
   PD.a = a; PD.b = b; RP.limit = 20; syncPD();
+  $('#pd-period').textContent = pdLabel(a, b);
   if (RK.sel != null) renderTripPosts(D.tripNames[RK.sel]);
 }
 
@@ -350,6 +372,7 @@ function selectTrip(t) {
     // 前のトリップの共有URL表示も隠す
     PD = { a: N - 1, b: N - 1 };
     syncPD();
+    $('#pd-period').textContent = pdLabel(PD.a, PD.b);
     $('#rd-share-row').hidden = true;
   }
   RK.sel = t;
@@ -367,7 +390,10 @@ function renderDetail() {
   det.hidden = false;
   const t = RK.sel, st = tripStats(PD.a, PD.b);
   $('#rd-name').textContent = D.tripNames[t];
-  $('#rd-meta').textContent = `追いかける期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
+  const seen = tripRangeSeen(t, PD.a, PD.b);
+  $('#rd-meta').textContent = seen.first >= 0
+    ? `指定範囲のレス数 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  期間内に初めてレスした日付 ${fmtDate(D.dates[seen.first])} ・ 期間内に最後にレスした日付 ${fmtDate(D.dates[seen.last])}`
+    : `指定範囲のレス数 0件(この期間の書き込みはありません)`;
   renderTripPosts(D.tripNames[t]);
 }
 

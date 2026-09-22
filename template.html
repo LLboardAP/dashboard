@@ -65,6 +65,11 @@ body {
 header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 h1 { font-size: 20px; margin: 0; font-weight: 650; }
 .sub { color: var(--ink2); font-size: 13px; margin-top: 2px; }
+.range-badge {
+  display: inline-block; font-size: 15px; font-weight: 700; color: var(--ink);
+  background: var(--hover); border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px 12px;
+}
 button { font: inherit; color: inherit; }
 .iconbtn {
   border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
@@ -226,7 +231,7 @@ input[type="search"] {
     <div class="range">
       <input type="date" id="from" aria-label="開始日"> – <input type="date" id="to" aria-label="終了日">
     </div>
-    <div class="sub" id="rangeinfo"></div>
+    <div class="range-badge" id="rangeinfo"></div>
   </div>
 
   <div class="filters" style="margin-bottom:16px" role="group" aria-label="日付を指定して表示">
@@ -852,7 +857,8 @@ function render() {
   if (DAYMODE) {
     dm.hidden = false;
     dm.textContent = '';
-    dm.appendChild(document.createTextNode(`${fmtDateW(DAYMODE)} のKPIを表示中  `));
+    h('span', 'range-badge', fmtDateW(DAYMODE), dm);
+    dm.appendChild(document.createTextNode(' のKPIを表示中  '));
     const btn = h('button', 'iconbtn', '期間の集計に戻す', dm);
     btn.type = 'button';
     btn.addEventListener('click', exitDayMode);
