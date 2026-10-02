@@ -306,6 +306,25 @@ input[type="search"] {
     <div class="tablewrap"><table><thead></thead><tbody></tbody></table></div>
   </details>
 
+  <details class="card" id="chk-rank-card" open>
+    <summary>チェック数ランキング(最終登場日別)</summary>
+    <div class="cap" style="margin-top:6px">最終登場日が「本日」「直近7日以内」「直近30日以内」のトリップを、チェック数が多い順に表示します</div>
+    <div class="chk-rank-grid">
+      <div class="chk-rank-col">
+        <h3 class="chk-rank-h">本日</h3>
+        <div class="tablewrap"><table id="chk-rank-today"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="chk-rank-col">
+        <h3 class="chk-rank-h">直近7日以内</h3>
+        <div class="tablewrap"><table id="chk-rank-7d"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="chk-rank-col">
+        <h3 class="chk-rank-h">直近30日以内</h3>
+        <div class="tablewrap"><table id="chk-rank-30d"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </details>
+
   <details class="card" id="rank-card" open hidden>
     <summary>トリップ別ランキング</summary>
     <div class="cap" style="margin-top:6px">ここで指定した期間の投稿数順です（上部の期間指定とは独立）。行を選ぶと、そのトリップの日別の推移を表示します</div>
@@ -332,25 +351,6 @@ input[type="search"] {
     </div>
     <div class="tablewrap" style="max-height:none;margin-top:0"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
     <button class="iconbtn rank-more" id="rank-more" type="button"></button>
-  </details>
-
-  <details class="card" id="chk-rank-card" open>
-    <summary>チェック数ランキング(最終登場日別)</summary>
-    <div class="cap" style="margin-top:6px">最終登場日が「本日」「直近7日以内」「直近30日以内」のトリップを、チェック数が多い順に表示します</div>
-    <div class="chk-rank-grid">
-      <div class="chk-rank-col">
-        <h3 class="chk-rank-h">本日</h3>
-        <div class="tablewrap"><table id="chk-rank-today"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div class="chk-rank-col">
-        <h3 class="chk-rank-h">直近7日以内</h3>
-        <div class="tablewrap"><table id="chk-rank-7d"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div class="chk-rank-col">
-        <h3 class="chk-rank-h">直近30日以内</h3>
-        <div class="tablewrap"><table id="chk-rank-30d"><thead></thead><tbody></tbody></table></div>
-      </div>
-    </div>
   </details>
 
   <ul class="notes" id="notes"></ul>

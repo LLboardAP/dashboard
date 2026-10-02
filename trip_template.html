@@ -173,18 +173,6 @@ a.rd-post-thread:hover { text-decoration: underline; }
     </div>
   </section>
 
-  <details class="card" id="search-card" open>
-    <summary>トリップを探す</summary>
-    <div class="cap">上で指定した期間内の投稿数順です。一覧から選ぶか、検索欄にトリップ文字列を入力して Enter で直接選べます</div>
-    <div class="rank-tools">
-      <input type="search" id="rank-q" placeholder="トリップで検索(部分一致 / Enterで直接選択)" aria-label="トリップで検索">
-      <label class="sub chk-filter"><input type="checkbox" id="rank-chk-only">チェックしたトリップだけ表示</label>
-      <span class="sub" id="rank-count"></span>
-    </div>
-    <div class="tablewrap"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
-    <button class="iconbtn rank-more" id="rank-more" type="button"></button>
-  </details>
-
   <details class="card" id="chk-rank-card" open>
     <summary>チェック数ランキング(最終登場日別)</summary>
     <div class="cap">最終登場日が「本日」「直近7日以内」「直近30日以内」のトリップを、チェック数が多い順に表示します</div>
@@ -202,6 +190,18 @@ a.rd-post-thread:hover { text-decoration: underline; }
         <div class="tablewrap"><table id="chk-rank-30d"><thead></thead><tbody></tbody></table></div>
       </div>
     </div>
+  </details>
+
+  <details class="card" id="search-card" open>
+    <summary>トリップを探す</summary>
+    <div class="cap">上で指定した期間内の投稿数順です。一覧から選ぶか、検索欄にトリップ文字列を入力して Enter で直接選べます</div>
+    <div class="rank-tools">
+      <input type="search" id="rank-q" placeholder="トリップで検索(部分一致 / Enterで直接選択)" aria-label="トリップで検索">
+      <label class="sub chk-filter"><input type="checkbox" id="rank-chk-only">チェックしたトリップだけ表示</label>
+      <span class="sub" id="rank-count"></span>
+    </div>
+    <div class="tablewrap"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
+    <button class="iconbtn rank-more" id="rank-more" type="button"></button>
   </details>
 
   <div class="detail" id="rank-detail" hidden>
