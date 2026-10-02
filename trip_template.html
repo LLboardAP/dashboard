@@ -87,6 +87,7 @@ input[type="search"] { padding: 5px 10px; min-width: 200px; }
 details summary { cursor: pointer; font-weight: 650; font-size: 15px; }
 .cap { color: var(--ink2); font-size: 12px; margin: 2px 0 8px; }
 .rank-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.chk-filter { display: flex; align-items: center; gap: 4px; cursor: pointer; margin-top: 0; }
 .tablewrap { max-height: 420px; overflow: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
 th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
@@ -94,6 +95,8 @@ th:first-child, td:first-child { text-align: left; }
 thead th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; }
 #rank-table tbody tr { cursor: pointer; }
 #rank-table tbody tr:hover, #rank-table tbody tr.sel { background: var(--hover); }
+#rank-table tbody tr.chk-row { background: color-mix(in srgb, var(--s2) 12%, var(--surface)); }
+#rank-table tbody tr.chk-row:hover, #rank-table tbody tr.chk-row.sel { background: color-mix(in srgb, var(--s2) 22%, var(--surface)); }
 #rank-table td.l, #rank-table th.l { text-align: left; }
 #rank-table td.trip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .chk-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -169,6 +172,7 @@ a.rd-post-thread:hover { text-decoration: underline; }
     <div class="cap">上で指定した期間内の投稿数順です。一覧から選ぶか、検索欄にトリップ文字列を入力して Enter で直接選べます</div>
     <div class="rank-tools">
       <input type="search" id="rank-q" placeholder="トリップで検索(部分一致 / Enterで直接選択)" aria-label="トリップで検索">
+      <label class="sub chk-filter"><input type="checkbox" id="rank-chk-only">チェックしたトリップだけ表示</label>
       <span class="sub" id="rank-count"></span>
     </div>
     <div class="tablewrap"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
@@ -298,7 +302,7 @@ function tripStats(a, b) {
 /* ---------- 期間指定(プリセット + 開始/終了日)。上部の検索用と、選択中トリップを
    追いかける範囲用とで、同じ部品を独立に2つ使う ---------- */
 const PRESETS = [['本日', 1], ['7日', 7], ['30日', 30], ['90日', 90]];
-let RK = { a: N - 1, b: N - 1, q: '', limit: 20, sel: null };
+let RK = { a: N - 1, b: N - 1, q: '', chkOnly: false, limit: 20, sel: null };
 let PD = { a: N - 1, b: N - 1 };
 
 function rangeBar(ids, get, apply) {
@@ -380,8 +384,9 @@ function render() {
   list.sort((p, q) => q.posts - p.posts || p.t - q.t);
   list.forEach((r, i) => { r.rank = i + 1; });
   const q = RK.q.trim().toLowerCase();
-  const filtered = q ? list.filter(r => r.name.toLowerCase().includes(q)) : list;
-  $('#rank-count').textContent = `${fmt0(filtered.length)}件${q ? '（検索結果）' : ''}`;
+  let filtered = q ? list.filter(r => r.name.toLowerCase().includes(q)) : list;
+  if (RK.chkOnly) { const done = myChecked(); filtered = filtered.filter(r => done.has(r.name)); }
+  $('#rank-count').textContent = `${fmt0(filtered.length)}件${q || RK.chkOnly ? '（絞り込み結果）' : ''}`;
 
   const thead = $('#rank-table thead'), tbody = $('#rank-table tbody');
   thead.textContent = ''; tbody.textContent = '';
@@ -389,17 +394,17 @@ function render() {
   ['順位', 'トリップ', '投稿数', '登場日数', '初登場', '最終登場', 'チェック'].forEach((label, i) =>
     h('th', i === 1 ? 'l' : '', label, tr));
   for (const r of filtered.slice(0, RK.limit)) {
-    const row = h('tr', RK.sel === r.t ? 'sel' : '', null, tbody);
+    const already = myChecked().has(r.name);
+    const rowCls = [RK.sel === r.t ? 'sel' : '', already ? 'chk-row' : ''].filter(Boolean).join(' ');
+    const row = h('tr', rowCls, null, tbody);
     row.tabIndex = 0;
     [r.rank, r.name, fmt0(r.posts), fmt0(r.days), fmtDate(D.dates[firstSeen[r.t]]), fmtDate(D.dates[lastSeen[r.t]])]
       .forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
     const chkTd = h('td', 'chk-cell', null, row);
     h('span', 'chk-count', fmt0(r.check), chkTd);
-    const already = myChecked().has(r.name);
     const chkBtn = h('button', 'chk-btn', already ? '✓済み' : 'チェック', chkTd);
     chkBtn.type = 'button';
     chkBtn.disabled = already;
-    chkBtn.title = already ? 'チェック済みです' : 'このトリップをチェックします(人気の目安として集計されます)';
     chkBtn.addEventListener('click', e => { e.stopPropagation(); checkTrip(r.name, render); });
     const pick = () => selectTrip(r.t);
     row.addEventListener('click', pick);
@@ -498,6 +503,7 @@ function renderTripPosts(tripName) {
 
 /* ---------- 起動時の配線 ---------- */
 $('#rank-q').addEventListener('input', e => { RK.q = e.target.value; RK.limit = 20; render(); });
+$('#rank-chk-only').addEventListener('change', e => { RK.chkOnly = e.target.checked; RK.limit = 20; render(); });
 $('#rank-q').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const v = e.target.value.trim();

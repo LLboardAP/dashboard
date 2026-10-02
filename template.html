@@ -183,12 +183,15 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 
 /* ranking */
 .rank-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.chk-filter { display: flex; align-items: center; gap: 4px; cursor: pointer; margin-top: 0; }
 input[type="search"] {
   font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
   border-radius: 8px; padding: 5px 10px; min-width: 200px;
 }
 #rank-table tbody tr { cursor: pointer; }
 #rank-table tbody tr:hover, #rank-table tbody tr.sel { background: var(--hover); }
+#rank-table tbody tr.chk-row { background: color-mix(in srgb, var(--s2) 12%, var(--surface)); }
+#rank-table tbody tr.chk-row:hover, #rank-table tbody tr.chk-row.sel { background: color-mix(in srgb, var(--s2) 22%, var(--surface)); }
 #rank-table td.l, #rank-table th.l { text-align: left; }
 #rank-table td.trip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 #rank-table th button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
@@ -311,6 +314,7 @@ input[type="search"] {
     </div>
     <div class="rank-tools">
       <input type="search" id="rank-q" placeholder="トリップで検索" aria-label="トリップで検索">
+      <label class="sub chk-filter"><input type="checkbox" id="rank-chk-only">チェックしたトリップだけ表示</label>
       <span class="sub" id="rank-count"></span>
     </div>
     <div class="detail" id="rank-detail" hidden>
@@ -939,7 +943,7 @@ function render() {
 }
 
 /* ---------- トリップ別ランキング(期間は全体の期間指定とは独立) ---------- */
-const RK = { key: 'posts', q: '', limit: 20, sel: null, a: Math.max(0, N - 90), b: N - 1 };
+const RK = { key: 'posts', q: '', chkOnly: false, limit: 20, sel: null, a: Math.max(0, N - 90), b: N - 1 };
 const RK_COLS = [
   ['rank', '順位', null], ['name', 'トリップ', null], ['posts', '投稿数', 'posts'], ['share', 'シェア', null],
   ['days', '登場日数', 'days'], ['avg', '1日あたり', 'avg'], ['first', '初登場', null], ['last', '最終登場', null],
@@ -969,8 +973,9 @@ function renderRank() {
   list.forEach((r, i) => { r.rank = i + 1; });
   const q = RK.q.trim().toLowerCase();
   if (q) list = list.filter(r => r.name.toLowerCase().includes(q));
+  if (RK.chkOnly) { const done = myChecked(); list = list.filter(r => done.has(r.name)); }
   if (RK.key !== 'posts') list.sort((p, r) => r[RK.key] - p[RK.key] || r.posts - p.posts);
-  $('#rank-count').textContent = `${fmt0(list.length)}件${q ? '（検索結果）' : ''}`;
+  $('#rank-count').textContent = `${fmt0(list.length)}件${q || RK.chkOnly ? '（絞り込み結果）' : ''}`;
 
   const thead = $('#rank-table thead'), tbody = $('#rank-table tbody');
   thead.textContent = ''; tbody.textContent = '';
@@ -985,18 +990,18 @@ function renderRank() {
     } else th.textContent = label;
   }
   for (const r of list.slice(0, RK.limit)) {
-    const row = h('tr', RK.sel === r.t ? 'sel' : '', null, tbody);
+    const already = myChecked().has(r.name);
+    const rowCls = [RK.sel === r.t ? 'sel' : '', already ? 'chk-row' : ''].filter(Boolean).join(' ');
+    const row = h('tr', rowCls, null, tbody);
     row.tabIndex = 0;
     const cells = [r.rank, r.name, fmt0(r.posts), fmt1(r.posts / total * 100) + '%', fmt0(r.days), fmt1(r.avg),
       fmtDate(D.dates[firstSeen[r.t]]), fmtDate(D.dates[lastSeen[r.t]])];
     cells.forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
     const chkTd = h('td', 'chk-cell', null, row);
     h('span', 'chk-count', fmt0(r.check), chkTd);
-    const already = myChecked().has(r.name);
     const chkBtn = h('button', 'chk-btn', already ? '✓済み' : 'チェック', chkTd);
     chkBtn.type = 'button';
     chkBtn.disabled = already;
-    chkBtn.title = already ? 'チェック済みです' : 'このトリップをチェックします(人気の目安として集計されます)';
     chkBtn.addEventListener('click', e => { e.stopPropagation(); checkTrip(r.name, renderRank); });
     // トリップが変わると適切な縦軸も変わるので、選び直したら縦軸の指定は自動に戻す
     const pick = () => { if (RK.sel !== r.t) yrReset('trip'); RK.sel = r.t; renderRank(); $('#rank-detail').scrollIntoView({ block: 'nearest' }); };
@@ -1121,6 +1126,7 @@ function shiftRangeForDay(a, b) { R = { a, b }; syncMain(); render(); }
   $('#tbl-next').addEventListener('click', () => { const i = D.dates.indexOf(TBL.sel); if (i >= 0 && i < N - 1) selectDay(D.dates[i + 1]); });
 
   $('#rank-q').addEventListener('input', e => { RK.q = e.target.value; RK.limit = 20; renderRank(); });
+  $('#rank-chk-only').addEventListener('change', e => { RK.chkOnly = e.target.checked; RK.limit = 20; renderRank(); });
   $('#rank-more').addEventListener('click', () => { RK.limit += 20; renderRank(); });
   $('#rd-close').addEventListener('click', () => { RK.sel = null; renderRank(); });
 
