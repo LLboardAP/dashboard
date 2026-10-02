@@ -96,6 +96,11 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 #rank-table tbody tr:hover, #rank-table tbody tr.sel { background: var(--hover); }
 #rank-table td.l, #rank-table th.l { text-align: left; }
 #rank-table td.trip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.chk-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chk-count { font-variant-numeric: tabular-nums; min-width: 1.6em; text-align: right; color: var(--ink2); }
+.chk-btn { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.chk-btn:hover:not(:disabled) { background: var(--hover); }
+.chk-btn:disabled { opacity: .55; cursor: default; }
 .rank-more { margin-top: 10px; }
 
 .detail { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
@@ -221,6 +226,39 @@ const fmtDate = s => { const [y, m, d] = s.split('-'); return `${y}/${+m}/${+d}`
 const fmtStamp = s => { const [d, ...rest] = s.split(' '); return [fmtDate(d), ...rest].join(' '); };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+/* ---------- トリップの「チェック」機能(人気の目安。Firebase Realtime Databaseにカウントのみ保存) ---------- */
+const FB_DB_URL = 'https://shitaraba-dashboard-default-rtdb.firebaseio.com';
+const CHECK_KEY = 'checkedTrips';
+let CHECKS = {};
+function myChecked() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHECK_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveChecked(set) {
+  try { localStorage.setItem(CHECK_KEY, JSON.stringify([...set])); } catch { /* 無視(プライベートモード等) */ }
+}
+async function loadChecks() {
+  try {
+    const res = await fetch(`${FB_DB_URL}/checks.json`);
+    CHECKS = (await res.json()) || {};
+  } catch { CHECKS = {}; }
+}
+// 1ブラウザにつき1トリップ1回まで(厳密な不正対策ではなく、同じ人の連打を防ぐ程度)
+async function checkTrip(trip, onDone) {
+  const done = myChecked();
+  if (done.has(trip)) return;
+  done.add(trip); saveChecked(done);
+  CHECKS[trip] = (CHECKS[trip] || 0) + 1;
+  onDone && onDone();
+  try {
+    await fetch(`${FB_DB_URL}/checks.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [trip]: { '.sv': { increment: 1 } } }),
+    });
+  } catch { /* 通信に失敗しても見た目はそのまま。次回読み込みで実際の値に揃う */ }
+}
+
 const N = D.dates.length;
 const nTrips = D.meta.trips;
 const firstSeen = new Int32Array(nTrips).fill(-1);
@@ -337,7 +375,7 @@ function render() {
   let list = [];
   for (let t = 0; t < nTrips; t++) {
     if (!st.days[t]) continue;
-    list.push({ t, name: D.tripNames[t], posts: st.posts[t], days: st.days[t] });
+    list.push({ t, name: D.tripNames[t], posts: st.posts[t], days: st.days[t], check: CHECKS[D.tripNames[t]] || 0 });
   }
   list.sort((p, q) => q.posts - p.posts || p.t - q.t);
   list.forEach((r, i) => { r.rank = i + 1; });
@@ -348,13 +386,21 @@ function render() {
   const thead = $('#rank-table thead'), tbody = $('#rank-table tbody');
   thead.textContent = ''; tbody.textContent = '';
   const tr = h('tr', null, null, thead);
-  ['順位', 'トリップ', '投稿数', '登場日数', '初登場', '最終登場'].forEach((label, i) =>
+  ['順位', 'トリップ', '投稿数', '登場日数', '初登場', '最終登場', 'チェック'].forEach((label, i) =>
     h('th', i === 1 ? 'l' : '', label, tr));
   for (const r of filtered.slice(0, RK.limit)) {
     const row = h('tr', RK.sel === r.t ? 'sel' : '', null, tbody);
     row.tabIndex = 0;
     [r.rank, r.name, fmt0(r.posts), fmt0(r.days), fmtDate(D.dates[firstSeen[r.t]]), fmtDate(D.dates[lastSeen[r.t]])]
       .forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
+    const chkTd = h('td', 'chk-cell', null, row);
+    h('span', 'chk-count', fmt0(r.check), chkTd);
+    const already = myChecked().has(r.name);
+    const chkBtn = h('button', 'chk-btn', already ? '✓済み' : 'チェック', chkTd);
+    chkBtn.type = 'button';
+    chkBtn.disabled = already;
+    chkBtn.title = already ? 'チェック済みです' : 'このトリップをチェックします(人気の目安として集計されます)';
+    chkBtn.addEventListener('click', e => { e.stopPropagation(); checkTrip(r.name, render); });
     const pick = () => selectTrip(r.t);
     row.addEventListener('click', pick);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
@@ -510,6 +556,7 @@ $('#theme').addEventListener('click', () => {
 syncRK();
 syncPD();
 render();
+loadChecks().then(render);
 const params = new URLSearchParams(location.search);
 const initialTrip = params.get('trip');
 if (initialTrip) selectTripByName(initialTrip);

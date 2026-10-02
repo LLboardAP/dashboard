@@ -194,6 +194,11 @@ input[type="search"] {
 #rank-table th button { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
 #rank-table th button:hover { color: var(--ink); }
 #rank-table th[aria-sort] { color: var(--ink); }
+.chk-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chk-count { font-variant-numeric: tabular-nums; min-width: 1.6em; text-align: right; color: var(--ink2); }
+.chk-btn { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.chk-btn:hover:not(:disabled) { background: var(--hover); }
+.chk-btn:disabled { opacity: .55; cursor: default; }
 .detail { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
 .detail-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 6px; }
 .detail-h b { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
@@ -350,6 +355,39 @@ function h(tag, cls, text, parent) {
   if (parent) parent.appendChild(e);
   return e;
 }
+/* ---------- トリップの「チェック」機能(人気の目安。Firebase Realtime Databaseにカウントのみ保存) ---------- */
+const FB_DB_URL = 'https://shitaraba-dashboard-default-rtdb.firebaseio.com';
+const CHECK_KEY = 'checkedTrips';
+let CHECKS = {};
+function myChecked() {
+  try { return new Set(JSON.parse(localStorage.getItem(CHECK_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveChecked(set) {
+  try { localStorage.setItem(CHECK_KEY, JSON.stringify([...set])); } catch { /* 無視(プライベートモード等) */ }
+}
+async function loadChecks() {
+  try {
+    const res = await fetch(`${FB_DB_URL}/checks.json`);
+    CHECKS = (await res.json()) || {};
+  } catch { CHECKS = {}; }
+}
+// 1ブラウザにつき1トリップ1回まで(厳密な不正対策ではなく、同じ人の連打を防ぐ程度)
+async function checkTrip(trip, onDone) {
+  const done = myChecked();
+  if (done.has(trip)) return;
+  done.add(trip); saveChecked(done);
+  CHECKS[trip] = (CHECKS[trip] || 0) + 1;
+  onDone && onDone();
+  try {
+    await fetch(`${FB_DB_URL}/checks.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [trip]: { '.sv': { increment: 1 } } }),
+    });
+  } catch { /* 通信に失敗しても見た目はそのまま。次回読み込みで実際の値に揃う */ }
+}
+
 const dowOf = s => (new Date(s + 'T00:00:00Z').getUTCDay() + 6) % 7;
 const fmtDate = s => { const [y, m, d] = s.split('-'); return `${y}/${+m}/${+d}`; };
 const fmtDateW = s => `${fmtDate(s)} (${WD[dowOf(s)]})`;
@@ -904,7 +942,8 @@ function render() {
 const RK = { key: 'posts', q: '', limit: 20, sel: null, a: Math.max(0, N - 90), b: N - 1 };
 const RK_COLS = [
   ['rank', '順位', null], ['name', 'トリップ', null], ['posts', '投稿数', 'posts'], ['share', 'シェア', null],
-  ['days', '登場日数', 'days'], ['avg', '1日あたり', 'avg'], ['first', '初登場', null], ['last', '最終登場', null]
+  ['days', '登場日数', 'days'], ['avg', '1日あたり', 'avg'], ['first', '初登場', null], ['last', '最終登場', null],
+  ['check', 'チェック', 'check']
 ];
 function tripDaily(t, a, b) {
   const out = new Array(b - a + 1).fill(0);
@@ -923,7 +962,7 @@ function renderRank() {
   let list = [], total = 0;
   for (let t = 0; t < nTrips; t++) {
     if (!st.days[t]) continue;
-    list.push({ t, name: D.tripNames[t], posts: st.posts[t], days: st.days[t], avg: st.posts[t] / st.days[t] });
+    list.push({ t, name: D.tripNames[t], posts: st.posts[t], days: st.days[t], avg: st.posts[t] / st.days[t], check: CHECKS[D.tripNames[t]] || 0 });
     total += st.posts[t];
   }
   list.sort((p, q) => q.posts - p.posts || p.t - q.t);
@@ -951,6 +990,14 @@ function renderRank() {
     const cells = [r.rank, r.name, fmt0(r.posts), fmt1(r.posts / total * 100) + '%', fmt0(r.days), fmt1(r.avg),
       fmtDate(D.dates[firstSeen[r.t]]), fmtDate(D.dates[lastSeen[r.t]])];
     cells.forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
+    const chkTd = h('td', 'chk-cell', null, row);
+    h('span', 'chk-count', fmt0(r.check), chkTd);
+    const already = myChecked().has(r.name);
+    const chkBtn = h('button', 'chk-btn', already ? '✓済み' : 'チェック', chkTd);
+    chkBtn.type = 'button';
+    chkBtn.disabled = already;
+    chkBtn.title = already ? 'チェック済みです' : 'このトリップをチェックします(人気の目安として集計されます)';
+    chkBtn.addEventListener('click', e => { e.stopPropagation(); checkTrip(r.name, renderRank); });
     // トリップが変わると適切な縦軸も変わるので、選び直したら縦軸の指定は自動に戻す
     const pick = () => { if (RK.sel !== r.t) yrReset('trip'); RK.sel = r.t; renderRank(); $('#rank-detail').scrollIntoView({ block: 'nearest' }); };
     row.addEventListener('click', pick);
@@ -1091,6 +1138,7 @@ function shiftRangeForDay(a, b) { R = { a, b }; syncMain(); render(); }
 
   syncRank();
   setRange(Math.max(0, N - 90), N - 1);
+  loadChecks().then(renderRank);
 }
 })();
 </script>
