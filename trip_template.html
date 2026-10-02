@@ -99,11 +99,14 @@ thead th { position: sticky; top: 0; background: var(--surface); color: var(--in
 #rank-table tbody tr.chk-row:hover, #rank-table tbody tr.chk-row.sel { background: color-mix(in srgb, var(--s2) 22%, var(--surface)); }
 #rank-table td.l, #rank-table th.l { text-align: left; }
 #rank-table td.trip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+#rank-table th button.th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+#rank-table th button.th-sort:hover { color: var(--ink); }
 .chk-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .chk-count { font-variant-numeric: tabular-nums; min-width: 1.6em; text-align: right; color: var(--ink2); }
 .chk-btn { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
-.chk-btn:hover:not(:disabled) { background: var(--hover); }
-.chk-btn:disabled { opacity: .55; cursor: default; }
+.chk-btn:hover { background: var(--hover); }
+.chk-btn.done { background: var(--s2); border-color: var(--s2); color: #fff; }
+.chk-btn.done:hover { opacity: .85; }
 .rank-more { margin-top: 10px; }
 
 .detail { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
@@ -247,18 +250,20 @@ async function loadChecks() {
     CHECKS = (await res.json()) || {};
   } catch { CHECKS = {}; }
 }
-// 1ブラウザにつき1トリップ1回まで(厳密な不正対策ではなく、同じ人の連打を防ぐ程度)
-async function checkTrip(trip, onDone) {
+// チェック/解除を切り替える(1ブラウザにつき1トリップ1票。厳密な不正対策ではなく連打を防ぐ程度)
+async function toggleCheck(trip, onDone) {
   const done = myChecked();
-  if (done.has(trip)) return;
-  done.add(trip); saveChecked(done);
-  CHECKS[trip] = (CHECKS[trip] || 0) + 1;
+  const nowChecked = done.has(trip);
+  const delta = nowChecked ? -1 : 1;
+  if (nowChecked) done.delete(trip); else done.add(trip);
+  saveChecked(done);
+  CHECKS[trip] = Math.max(0, (CHECKS[trip] || 0) + delta);
   onDone && onDone();
   try {
     await fetch(`${FB_DB_URL}/checks.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [trip]: { '.sv': { increment: 1 } } }),
+      body: JSON.stringify({ [trip]: { '.sv': { increment: delta } } }),
     });
   } catch { /* 通信に失敗しても見た目はそのまま。次回読み込みで実際の値に揃う */ }
 }
@@ -302,7 +307,7 @@ function tripStats(a, b) {
 /* ---------- 期間指定(プリセット + 開始/終了日)。上部の検索用と、選択中トリップを
    追いかける範囲用とで、同じ部品を独立に2つ使う ---------- */
 const PRESETS = [['本日', 1], ['7日', 7], ['30日', 30], ['90日', 90]];
-let RK = { a: N - 1, b: N - 1, q: '', chkOnly: false, limit: 20, sel: null };
+let RK = { a: N - 1, b: N - 1, q: '', chkOnly: false, sortKey: 'posts', limit: 20, sel: null };
 let PD = { a: N - 1, b: N - 1 };
 
 function rangeBar(ids, get, apply) {
@@ -386,13 +391,24 @@ function render() {
   const q = RK.q.trim().toLowerCase();
   let filtered = q ? list.filter(r => r.name.toLowerCase().includes(q)) : list;
   if (RK.chkOnly) { const done = myChecked(); filtered = filtered.filter(r => done.has(r.name)); }
+  if (RK.sortKey !== 'posts') filtered = filtered.slice().sort((p, r) => r[RK.sortKey] - p[RK.sortKey] || r.posts - p.posts);
   $('#rank-count').textContent = `${fmt0(filtered.length)}件${q || RK.chkOnly ? '（絞り込み結果）' : ''}`;
 
   const thead = $('#rank-table thead'), tbody = $('#rank-table tbody');
   thead.textContent = ''; tbody.textContent = '';
   const tr = h('tr', null, null, thead);
-  ['順位', 'トリップ', '投稿数', '登場日数', '初登場', '最終登場', 'チェック'].forEach((label, i) =>
-    h('th', i === 1 ? 'l' : '', label, tr));
+  const RANK_COLS = [
+    ['順位', null], ['トリップ', null], ['投稿数', 'posts'], ['登場日数', null],
+    ['初登場', null], ['最終登場', null], ['チェック', 'check'],
+  ];
+  RANK_COLS.forEach(([label, sortKey], i) => {
+    const th = h('th', i === 1 ? 'l' : '', null, tr);
+    if (sortKey) {
+      const btn = h('button', 'th-sort', label + (RK.sortKey === sortKey ? ' ▼' : ''), th);
+      btn.type = 'button';
+      btn.addEventListener('click', () => { RK.sortKey = sortKey; RK.limit = 20; render(); });
+    } else th.textContent = label;
+  });
   for (const r of filtered.slice(0, RK.limit)) {
     const already = myChecked().has(r.name);
     const rowCls = [RK.sel === r.t ? 'sel' : '', already ? 'chk-row' : ''].filter(Boolean).join(' ');
@@ -402,10 +418,9 @@ function render() {
       .forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
     const chkTd = h('td', 'chk-cell', null, row);
     h('span', 'chk-count', fmt0(r.check), chkTd);
-    const chkBtn = h('button', 'chk-btn', already ? '✓済み' : 'チェック', chkTd);
+    const chkBtn = h('button', 'chk-btn' + (already ? ' done' : ''), already ? '✓済み' : 'チェック', chkTd);
     chkBtn.type = 'button';
-    chkBtn.disabled = already;
-    chkBtn.addEventListener('click', e => { e.stopPropagation(); checkTrip(r.name, render); });
+    chkBtn.addEventListener('click', e => { e.stopPropagation(); toggleCheck(r.name, render); });
     const pick = () => selectTrip(r.t);
     row.addEventListener('click', pick);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });

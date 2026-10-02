@@ -200,8 +200,9 @@ input[type="search"] {
 .chk-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .chk-count { font-variant-numeric: tabular-nums; min-width: 1.6em; text-align: right; color: var(--ink2); }
 .chk-btn { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
-.chk-btn:hover:not(:disabled) { background: var(--hover); }
-.chk-btn:disabled { opacity: .55; cursor: default; }
+.chk-btn:hover { background: var(--hover); }
+.chk-btn.done { background: var(--s2); border-color: var(--s2); color: #fff; }
+.chk-btn.done:hover { opacity: .85; }
 .detail { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
 .detail-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 6px; }
 .detail-h b { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }
@@ -376,18 +377,20 @@ async function loadChecks() {
     CHECKS = (await res.json()) || {};
   } catch { CHECKS = {}; }
 }
-// 1ブラウザにつき1トリップ1回まで(厳密な不正対策ではなく、同じ人の連打を防ぐ程度)
-async function checkTrip(trip, onDone) {
+// チェック/解除を切り替える(1ブラウザにつき1トリップ1票。厳密な不正対策ではなく連打を防ぐ程度)
+async function toggleCheck(trip, onDone) {
   const done = myChecked();
-  if (done.has(trip)) return;
-  done.add(trip); saveChecked(done);
-  CHECKS[trip] = (CHECKS[trip] || 0) + 1;
+  const nowChecked = done.has(trip);
+  const delta = nowChecked ? -1 : 1;
+  if (nowChecked) done.delete(trip); else done.add(trip);
+  saveChecked(done);
+  CHECKS[trip] = Math.max(0, (CHECKS[trip] || 0) + delta);
   onDone && onDone();
   try {
     await fetch(`${FB_DB_URL}/checks.json`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [trip]: { '.sv': { increment: 1 } } }),
+      body: JSON.stringify({ [trip]: { '.sv': { increment: delta } } }),
     });
   } catch { /* 通信に失敗しても見た目はそのまま。次回読み込みで実際の値に揃う */ }
 }
@@ -999,10 +1002,9 @@ function renderRank() {
     cells.forEach((v, i) => h('td', i === 1 ? 'l trip' : '', v, row));
     const chkTd = h('td', 'chk-cell', null, row);
     h('span', 'chk-count', fmt0(r.check), chkTd);
-    const chkBtn = h('button', 'chk-btn', already ? '✓済み' : 'チェック', chkTd);
+    const chkBtn = h('button', 'chk-btn' + (already ? ' done' : ''), already ? '✓済み' : 'チェック', chkTd);
     chkBtn.type = 'button';
-    chkBtn.disabled = already;
-    chkBtn.addEventListener('click', e => { e.stopPropagation(); checkTrip(r.name, renderRank); });
+    chkBtn.addEventListener('click', e => { e.stopPropagation(); toggleCheck(r.name, renderRank); });
     // トリップが変わると適切な縦軸も変わるので、選び直したら縦軸の指定は自動に戻す
     const pick = () => { if (RK.sel !== r.t) yrReset('trip'); RK.sel = r.t; renderRank(); $('#rank-detail').scrollIntoView({ block: 'nearest' }); };
     row.addEventListener('click', pick);
