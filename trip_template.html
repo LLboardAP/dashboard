@@ -88,6 +88,9 @@ details summary { cursor: pointer; font-weight: 650; font-size: 15px; }
 .cap { color: var(--ink2); font-size: 12px; margin: 2px 0 8px; }
 .rank-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
 .chk-filter { display: flex; align-items: center; gap: 4px; cursor: pointer; margin-top: 0; }
+.chk-rank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.chk-rank-h { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--ink2); }
+.chk-rank-empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
 .tablewrap { max-height: 420px; overflow: auto; margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
 th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
@@ -180,6 +183,25 @@ a.rd-post-thread:hover { text-decoration: underline; }
     </div>
     <div class="tablewrap"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
     <button class="iconbtn rank-more" id="rank-more" type="button"></button>
+  </details>
+
+  <details class="card" id="chk-rank-card" open>
+    <summary>チェック数ランキング(最終登場日別)</summary>
+    <div class="cap">最終登場日が「本日」「直近7日以内」「直近30日以内」のトリップを、チェック数が多い順に表示します</div>
+    <div class="chk-rank-grid">
+      <div class="chk-rank-col">
+        <h3 class="chk-rank-h">本日</h3>
+        <div class="tablewrap"><table id="chk-rank-today"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="chk-rank-col">
+        <h3 class="chk-rank-h">直近7日以内</h3>
+        <div class="tablewrap"><table id="chk-rank-7d"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="chk-rank-col">
+        <h3 class="chk-rank-h">直近30日以内</h3>
+        <div class="tablewrap"><table id="chk-rank-30d"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
   </details>
 
   <div class="detail" id="rank-detail" hidden>
@@ -420,7 +442,7 @@ function render() {
     h('span', 'chk-count', fmt0(r.check), chkTd);
     const chkBtn = h('button', 'chk-btn' + (already ? ' done' : ''), already ? '✓済み' : 'チェック', chkTd);
     chkBtn.type = 'button';
-    chkBtn.addEventListener('click', e => { e.stopPropagation(); toggleCheck(r.name, render); });
+    chkBtn.addEventListener('click', e => { e.stopPropagation(); toggleCheck(r.name, () => { render(); renderCheckRankings(); }); });
     const pick = () => selectTrip(r.t);
     row.addEventListener('click', pick);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
@@ -448,6 +470,47 @@ function selectTripByName(name) {
   const t = D.tripNames.indexOf(name);
   if (t >= 0) selectTrip(t);
   return t >= 0;
+}
+
+/* ---------- チェック数ランキング(最終登場日が本日/7日以内/30日以内) ---------- */
+function renderCheckRankings() {
+  const last = N - 1; // データ上の最新日
+  const buckets = [
+    ['chk-rank-today', last],
+    ['chk-rank-7d', last - 6],
+    ['chk-rank-30d', last - 29],
+  ];
+  for (const [id, minIdx] of buckets) {
+    const rows = [];
+    for (let t = 0; t < nTrips; t++) {
+      if (lastSeen[t] < 0 || lastSeen[t] < minIdx) continue;
+      const c = CHECKS[D.tripNames[t]] || 0;
+      if (c <= 0) continue;
+      rows.push({ t, name: D.tripNames[t], check: c });
+    }
+    rows.sort((a, b) => b.check - a.check);
+    const table = document.getElementById(id);
+    const thead = table.querySelector('thead'), tbody = table.querySelector('tbody');
+    thead.textContent = ''; tbody.textContent = '';
+    const tr = h('tr', null, null, thead);
+    ['順位', 'トリップ', 'チェック数'].forEach((label, i) => h('th', i === 1 ? 'l' : '', label, tr));
+    if (!rows.length) {
+      const row = h('tr', null, null, tbody);
+      const td = h('td', 'chk-rank-empty', 'チェックされたトリップはまだありません', row);
+      td.colSpan = 3;
+      continue;
+    }
+    rows.slice(0, 10).forEach((r, i) => {
+      const row = h('tr', null, null, tbody);
+      row.tabIndex = 0;
+      h('td', null, i + 1, row);
+      h('td', 'l trip', r.name, row);
+      h('td', null, fmt0(r.check), row);
+      const pick = () => selectTrip(r.t);
+      row.addEventListener('click', pick);
+      row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+    });
+  }
 }
 
 function renderDetail() {
@@ -577,7 +640,8 @@ $('#theme').addEventListener('click', () => {
 syncRK();
 syncPD();
 render();
-loadChecks().then(render);
+renderCheckRankings();
+loadChecks().then(() => { render(); renderCheckRankings(); });
 const params = new URLSearchParams(location.search);
 const initialTrip = params.get('trip');
 if (initialTrip) selectTripByName(initialTrip);
