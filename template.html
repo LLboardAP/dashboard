@@ -347,7 +347,6 @@ input[type="search"] {
       </div>
       <div class="yr" id="yr-trip"></div>
       <div class="chart-host" id="ch-trip"></div>
-      <a class="iconbtn" id="rd-search-link" href="trip-search.html" target="_blank" rel="noopener" style="margin-top:10px;display:inline-block">このトリップの投稿を見る →</a>
     </div>
     <div class="tablewrap" style="max-height:none;margin-top:0"><table id="rank-table"><thead></thead><tbody></tbody></table></div>
     <button class="iconbtn rank-more" id="rank-more" type="button"></button>
@@ -1043,7 +1042,6 @@ function renderRank() {
   $('#rd-name').textContent = D.tripNames[t];
   $('#rd-meta').textContent = `期間内 ${fmt0(st.posts[t])}件 / ${fmt0(st.days[t])}日  ・  全期間の初登場 ${fmtDate(D.dates[firstSeen[t]])} ・ 最終登場 ${fmtDate(D.dates[lastSeen[t]])}`;
   yrSync('trip', timeChart($('#ch-trip'), { x: D.dates.slice(a, b + 1), series: [{ name: '投稿数', vals: s, color: 'var(--s2)', type: 'bar' }], yMin: 0, height: 180, label: `トリップ ${D.tripNames[t]} の日別投稿数`, yr: YR.trip }));
-  $('#rd-search-link').href = `trip-search.html?trip=${encodeURIComponent(D.tripNames[t])}`;
 }
 
 /* ---------- チェック数ランキング(最終登場日が本日/7日以内/30日以内) ---------- */
